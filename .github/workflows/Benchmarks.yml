@@ -253,9 +253,12 @@ jobs:
 
           TARGET_DIR="${{ github.workspace }}/target/Clapeyron.jl"
           DB="${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite"
+          FAILURE_LOG="${{ github.workspace }}/gh-pages/benchmarks/data/backfill-failures.txt"
           BACKFILL_FROM_TAG="${{ inputs.backfill_from_tag || env.BACKFILL_FROM_TAG }}"
           BACKFILL_TO_TAG="${{ inputs.backfill_to_tag || env.BACKFILL_TO_TAG }}"
           started=false
+          success_count=0
+          failure_count=0
 
           mkdir -p "$(dirname "$DB")"
 
@@ -275,15 +278,22 @@ jobs:
             commit="$(git -C "$TARGET_DIR" rev-parse HEAD)"
             date="$(git -C "$TARGET_DIR" show -s --format=%cI HEAD)"
 
-            BENCH_TARGET_PATH="$TARGET_DIR" \
-            BENCH_DB_PATH="$DB" \
-            BENCH_DB_IN_CURRENT_BRANCH=false \
-            BENCH_BRANCH="" \
-            BENCH_TAG="$tag" \
-            BENCH_COMMIT="$commit" \
-            BENCH_DATE="$date" \
-            BENCH_NOTES="Backfilled with current benchmark suite against $tag" \
-            julia --project=benchmark benchmark/runbench.jl
+            if BENCH_TARGET_PATH="$TARGET_DIR" \
+              BENCH_DB_PATH="$DB" \
+              BENCH_DB_IN_CURRENT_BRANCH=false \
+              BENCH_BRANCH="" \
+              BENCH_TAG="$tag" \
+              BENCH_COMMIT="$commit" \
+              BENCH_DATE="$date" \
+              BENCH_NOTES="Backfilled with current benchmark suite against $tag" \
+              julia --project=benchmark benchmark/runbench.jl; then
+              success_count=$((success_count + 1))
+              echo "Benchmark succeeded for $tag"
+            else
+              failure_count=$((failure_count + 1))
+              echo "Benchmark failed for $tag, skipping to next tag."
+              printf '%s\t%s\t%s\n' "$tag" "$commit" "$date" >> "$FAILURE_LOG"
+            fi
 
             if [ -n "$BACKFILL_TO_TAG" ] && [ "$tag" = "$BACKFILL_TO_TAG" ]; then
               break
@@ -292,6 +302,24 @@ jobs:
 
           if [ "$started" = false ]; then
             echo "Requested backfill_from_tag '$BACKFILL_FROM_TAG' was not found in $TARGET_REPOSITORY tags." >&2
+            exit 1
+          fi
+
+          if [ "$failure_count" -gt 0 ]; then
+            {
+              echo "## Backfill skipped failed tags"
+              echo
+              echo "Successful tags: $success_count"
+              echo "Failed tags: $failure_count"
+              echo
+              echo '```'
+              cat "$FAILURE_LOG"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$success_count" -eq 0 ]; then
+            echo "Backfill did not produce any successful benchmark runs." >&2
             exit 1
           fi
 
@@ -312,7 +340,15 @@ jobs:
           name: clapeyron-backfill-db-${{ github.run_id }}
           path: gh-pages/benchmarks/data/benchledger.sqlite
 
+      - name: Upload skipped-tag log
+        if: always() && hashFiles('gh-pages/benchmarks/data/backfill-failures.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: clapeyron-backfill-failures-${{ github.run_id }}
+          path: gh-pages/benchmarks/data/backfill-failures.txt
+
       - name: Checkpoint benchmark database
+        if: hashFiles('gh-pages/benchmarks/data/benchledger.sqlite') != ''
         env:
           BENCH_DB_PATH: ${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite
         run: |
@@ -320,6 +356,7 @@ jobs:
           rm -f "${BENCH_DB_PATH}-wal" "${BENCH_DB_PATH}-shm"
 
       - name: Download BenchLedger web release
+        if: hashFiles('gh-pages/benchmarks/data/benchledger.sqlite') != ''
         run: |
           url="https://github.com/abcdvvvv/BenchLedger/releases/download/v${BENCHLEDGER_VERSION}/BenchLedger-${BENCHLEDGER_VERSION}-dist.tar.gz"
           curl -fsSL "$url" -o /tmp/benchledger-dist.tar.gz
@@ -328,12 +365,14 @@ jobs:
           tar -xzf /tmp/benchledger-dist.tar.gz -C /tmp/benchledger-dist
 
       - name: Install BenchLedger viewer
+        if: hashFiles('gh-pages/benchmarks/data/benchledger.sqlite') != ''
         run: |
           mkdir -p gh-pages/benchmarks/data
           find gh-pages/benchmarks -mindepth 1 -maxdepth 1 ! -name data -exec rm -rf {} +
           cp -a /tmp/benchledger-dist/. gh-pages/benchmarks/
 
       - name: Generate BenchLedger manifest
+        if: hashFiles('gh-pages/benchmarks/data/benchledger.sqlite') != ''
         run: |
           db="gh-pages/benchmarks/data/benchledger.sqlite"
           generated_at="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
@@ -370,6 +409,7 @@ jobs:
           EOF
 
       - name: Publish BenchLedger page
+        if: hashFiles('gh-pages/benchmarks/data/benchledger.sqlite') != ''
         working-directory: gh-pages
         run: |
           touch .nojekyll
