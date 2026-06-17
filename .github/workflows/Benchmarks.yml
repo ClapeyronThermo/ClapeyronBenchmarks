@@ -11,6 +11,10 @@ on:
         description: "Backfill historical benchmark data"
         required: true
         default: "false"
+      backfill_from_tag:
+        description: "Oldest Clapeyron tag to include in backfill"
+        required: false
+        default: "v0.6.1"
   push:
     branches:
       - master
@@ -30,6 +34,7 @@ env:
   BENCH_PACKAGE_DESCRIPTION: "Benchmark history for Clapeyron.jl"
   BENCH_PACKAGE_URL: "https://github.com/ClapeyronThermo/Clapeyron.jl"
   TARGET_REPOSITORY: "ClapeyronThermo/Clapeyron.jl"
+  BACKFILL_FROM_TAG: "v0.6.1"
 
 jobs:
   build-and-publish:
@@ -44,12 +49,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check out Pages branch
-        uses: actions/checkout@v6
-        with:
-          ref: gh-pages
-          path: gh-pages
-          fetch-depth: 1
+      - name: Prepare Pages worktree
+        run: |
+          mkdir -p gh-pages
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages:refs/remotes/origin/gh-pages
+            git -C gh-pages init
+            git -C gh-pages remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+            git -C gh-pages fetch --depth=1 origin gh-pages
+            git -C gh-pages checkout -B gh-pages FETCH_HEAD
+          else
+            git -C gh-pages init
+            git -C gh-pages checkout --orphan gh-pages
+          fi
 
       - name: Check out Clapeyron target
         uses: actions/checkout@v6
@@ -175,9 +187,10 @@ jobs:
       - name: Publish BenchLedger page
         working-directory: gh-pages
         run: |
+          touch .nojekyll
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add benchmarks
+          git add benchmarks .nojekyll
 
           if git diff --cached --quiet; then
             echo "No benchmarks page changes to publish."
@@ -197,12 +210,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check out Pages branch
-        uses: actions/checkout@v6
-        with:
-          ref: gh-pages
-          path: gh-pages
-          fetch-depth: 1
+      - name: Prepare Pages worktree
+        run: |
+          mkdir -p gh-pages
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages:refs/remotes/origin/gh-pages
+            git -C gh-pages init
+            git -C gh-pages remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+            git -C gh-pages fetch --depth=1 origin gh-pages
+            git -C gh-pages checkout -B gh-pages FETCH_HEAD
+          else
+            git -C gh-pages init
+            git -C gh-pages checkout --orphan gh-pages
+          fi
 
       - name: Check out Clapeyron target history
         uses: actions/checkout@v6
@@ -229,10 +249,20 @@ jobs:
 
           TARGET_DIR="${{ github.workspace }}/target/Clapeyron.jl"
           DB="${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite"
+          BACKFILL_FROM_TAG="${{ inputs.backfill_from_tag || env.BACKFILL_FROM_TAG }}"
+          started=false
 
           mkdir -p "$(dirname "$DB")"
 
           for tag in $(git -C "$TARGET_DIR" tag --sort=v:refname); do
+            if [ "$started" = false ]; then
+              if [ "$tag" = "$BACKFILL_FROM_TAG" ]; then
+                started=true
+              else
+                continue
+              fi
+            fi
+
             echo "Backfilling benchmark for $tag"
 
             git -C "$TARGET_DIR" checkout --detach "$tag"
@@ -250,6 +280,11 @@ jobs:
             BENCH_NOTES="Backfilled with current benchmark suite against $tag" \
             julia --project=benchmark benchmark/runbench.jl
           done
+
+          if [ "$started" = false ]; then
+            echo "Requested backfill_from_tag '$BACKFILL_FROM_TAG' was not found in $TARGET_REPOSITORY tags." >&2
+            exit 1
+          fi
 
       - name: Checkpoint benchmark database
         env:
@@ -311,9 +346,10 @@ jobs:
       - name: Publish BenchLedger page
         working-directory: gh-pages
         run: |
+          touch .nojekyll
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add benchmarks
+          git add benchmarks .nojekyll
 
           if git diff --cached --quiet; then
             echo "No benchmarks page changes to publish."
