@@ -1,6 +1,8 @@
 import Pkg
 Pkg.activate(@__DIR__)
-const Target_Package_Path = abspath(get(ENV, "BENCH_TARGET_PATH", error("BENCH_TARGET_PATH is required for ClapeyronBenchmarks runs.")))
+const Target_Package_Path = haskey(ENV, "BENCH_TARGET_PATH") ?
+    abspath(ENV["BENCH_TARGET_PATH"]) :
+    error("BENCH_TARGET_PATH is required for ClapeyronBenchmarks runs.")
 Pkg.develop(path=Target_Package_Path)
 Pkg.instantiate()
 
