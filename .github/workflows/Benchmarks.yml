@@ -60,6 +60,7 @@ jobs:
             git -C gh-pages checkout -B gh-pages FETCH_HEAD
           else
             git -C gh-pages init
+            git -C gh-pages remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
             git -C gh-pages checkout --orphan gh-pages
           fi
 
@@ -219,6 +220,7 @@ jobs:
             git -C gh-pages checkout -B gh-pages FETCH_HEAD
           else
             git -C gh-pages init
+            git -C gh-pages remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
             git -C gh-pages checkout --orphan gh-pages
           fi
 
