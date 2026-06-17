@@ -1,7 +1,7 @@
 {
   "manifest_version": 1,
   "benchledger_web_version": "0.3.1",
-  "generated_at": "2026-06-17T13:09:28.000Z",
+  "generated_at": "2026-06-17T13:36:43.000Z",
   "site": {
     "title": "Clapeyron.jl BenchLedger",
     "description": "Benchmark history for Clapeyron.jl"
@@ -12,9 +12,9 @@
       "name": "Clapeyron.jl",
       "description": "Benchmark history for Clapeyron.jl",
       "url": "./data/benchledger.sqlite",
-      "sha256": "d716bcc20be275fd5e15c788a5ae08b551e36c8e596d50814cc3a15dd4ecac23",
-      "size_bytes": 81920,
-      "packed_at": "2026-06-17T13:09:28.000Z",
+      "sha256": "7df8b318920eb787398e5d1a40d6f3aef50d155522db5006eceafacb9d3bed30",
+      "size_bytes": 98304,
+      "packed_at": "2026-06-17T13:36:43.000Z",
       "schema_version": 3,
       "metadata_preview": {
         "name": "Clapeyron.jl",
