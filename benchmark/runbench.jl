@@ -69,22 +69,23 @@ function detect_branch()
     branch = get(ENV, "BENCH_BRANCH", "")
     !isempty(branch) && return branch
 
-    branch = get(ENV, "GITHUB_REF_TYPE", "") == "branch" ? get(ENV, "GITHUB_REF_NAME", "") : ""
-    !isempty(branch) && return branch
-
+    # In the companion-repo setup, benchmark metadata should describe the target repo,
+    # not the CI repository that is executing this script.
     branch = readchomp(`git -C $Target_Package_Path branch --show-current`)
     !isempty(branch) && return branch
     return ""
 end
 
 function detect_tag()
-    get(ENV, "GITHUB_REF_TYPE", "") == "tag" && return get(ENV, "GITHUB_REF_NAME", "")
+    tag = get(ENV, "BENCH_TAG", "")
+    !isempty(tag) && return tag
+
     tags = readchomp(`git -C $Target_Package_Path tag --points-at HEAD`)
     return isempty(tags) ? tags : split(tags, '\n'; keepempty=false) |> first
 end
 
 function detect_commit()
-    commit = get(ENV, "GITHUB_SHA", "")
+    commit = get(ENV, "BENCH_COMMIT", "")
     isempty(commit) ? readchomp(`git -C $Target_Package_Path rev-parse HEAD`) : commit
 end
 
