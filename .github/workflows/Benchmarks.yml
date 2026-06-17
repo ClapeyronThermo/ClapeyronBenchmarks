@@ -1,0 +1,323 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: "Clapeyron.jl ref to benchmark (branch, tag, or commit SHA)"
+        required: false
+        default: "master"
+      backfill:
+        description: "Backfill historical benchmark data"
+        required: true
+        default: "false"
+  push:
+    branches:
+      - master
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: benchledger-pages
+  cancel-in-progress: false
+
+env:
+  BENCHLEDGER_VERSION: "0.3.1"
+  BENCH_PACKAGE_NAME: "Clapeyron.jl"
+  BENCH_PACKAGE_DESCRIPTION: "Benchmark history for Clapeyron.jl"
+  BENCH_PACKAGE_URL: "https://github.com/ClapeyronThermo/Clapeyron.jl"
+  TARGET_REPOSITORY: "ClapeyronThermo/Clapeyron.jl"
+
+jobs:
+  build-and-publish:
+    if: github.event_name != 'workflow_dispatch' || inputs.backfill != 'true'
+    name: Ubuntu 24.04 - x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check out Pages branch
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: gh-pages
+          fetch-depth: 1
+
+      - name: Check out Clapeyron target
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.TARGET_REPOSITORY }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_ref || 'master' }}
+          path: target/Clapeyron.jl
+          fetch-depth: 0
+
+      - name: Resolve target metadata
+        id: target
+        run: |
+          set -euo pipefail
+
+          TARGET_DIR="${{ github.workspace }}/target/Clapeyron.jl"
+          requested_ref="${{ github.event_name == 'workflow_dispatch' && inputs.target_ref || 'master' }}"
+          commit="$(git -C "$TARGET_DIR" rev-parse HEAD)"
+          date="$(git -C "$TARGET_DIR" show -s --format=%cI HEAD)"
+          tag="$(git -C "$TARGET_DIR" tag --points-at HEAD | head -n 1 || true)"
+          branch=""
+
+          # actions/checkout commonly leaves detached HEAD, so prefer the requested ref when it is a branch.
+          if [ -n "$requested_ref" ] && git -C "$TARGET_DIR" show-ref --verify --quiet "refs/remotes/origin/$requested_ref"; then
+            branch="$requested_ref"
+          elif [ -n "$requested_ref" ] && git -C "$TARGET_DIR" show-ref --verify --quiet "refs/heads/$requested_ref"; then
+            branch="$requested_ref"
+          else
+            branch="$(git -C "$TARGET_DIR" branch --show-current || true)"
+          fi
+
+          if [ -n "$tag" ]; then
+            branch=""
+          fi
+
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "date=$date" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: "1"
+
+      - name: Cache Julia packages
+        uses: julia-actions/cache@v2
+
+      - name: Instantiate benchmark project
+        run: julia --project=benchmark -e 'using Pkg; Pkg.instantiate()'
+
+      - name: Run benchmarks into benchmark database
+        env:
+          BENCH_DB_IN_CURRENT_BRANCH: false
+          BENCH_DB_PATH: ${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite
+          BENCH_TARGET_PATH: ${{ github.workspace }}/target/Clapeyron.jl
+          BENCH_BRANCH: ${{ steps.target.outputs.branch }}
+          BENCH_TAG: ${{ steps.target.outputs.tag }}
+          BENCH_COMMIT: ${{ steps.target.outputs.commit }}
+          BENCH_DATE: ${{ steps.target.outputs.date }}
+          BENCH_NOTES: "GitHub Actions BenchLedger run"
+        run: |
+          mkdir -p "$(dirname "$BENCH_DB_PATH")"
+          julia --project=benchmark benchmark/runbench.jl
+
+      - name: Checkpoint benchmark database
+        env:
+          BENCH_DB_PATH: ${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite
+          # BENCH_DB_PATH: ${{ github.workspace }}/benchmark/benchledger.sqlite (if database is not in page deploy branch)
+        run: |
+          julia --project=benchmark -e 'using SQLite; db = SQLite.DB(ENV["BENCH_DB_PATH"]); SQLite.execute(db, "PRAGMA wal_checkpoint(TRUNCATE)"); close(db)'
+          rm -f "${BENCH_DB_PATH}-wal" "${BENCH_DB_PATH}-shm"
+
+      - name: Download BenchLedger web release
+        run: |
+          url="https://github.com/abcdvvvv/BenchLedger/releases/download/v${BENCHLEDGER_VERSION}/BenchLedger-${BENCHLEDGER_VERSION}-dist.tar.gz"
+          curl -fsSL "$url" -o /tmp/benchledger-dist.tar.gz
+          rm -rf /tmp/benchledger-dist
+          mkdir -p /tmp/benchledger-dist
+          tar -xzf /tmp/benchledger-dist.tar.gz -C /tmp/benchledger-dist
+
+      - name: Install BenchLedger viewer
+        run: |
+          mkdir -p gh-pages/benchmarks/data
+          find gh-pages/benchmarks -mindepth 1 -maxdepth 1 ! -name data -exec rm -rf {} +
+          cp -a /tmp/benchledger-dist/. gh-pages/benchmarks/
+
+      - name: Generate BenchLedger manifest
+        run: |
+          db="gh-pages/benchmarks/data/benchledger.sqlite"
+          generated_at="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
+          sha256="$(sha256sum "$db" | cut -d' ' -f1)"
+          size_bytes="$(stat -c '%s' "$db")"
+
+          cat > gh-pages/benchmarks/benchledger.json <<EOF
+          {
+            "manifest_version": 1,
+            "benchledger_web_version": "${BENCHLEDGER_VERSION}",
+            "generated_at": "${generated_at}",
+            "site": {
+              "title": "${BENCH_PACKAGE_NAME} BenchLedger",
+              "description": "${BENCH_PACKAGE_DESCRIPTION}"
+            },
+            "databases": [
+              {
+                "id": "${BENCH_PACKAGE_NAME}",
+                "name": "${BENCH_PACKAGE_NAME}",
+                "description": "${BENCH_PACKAGE_DESCRIPTION}",
+                "url": "./data/benchledger.sqlite",
+                "sha256": "${sha256}",
+                "size_bytes": ${size_bytes},
+                "packed_at": "${generated_at}",
+                "schema_version": 3,
+                "metadata_preview": {
+                  "name": "${BENCH_PACKAGE_NAME}",
+                  "project_url": "${BENCH_PACKAGE_URL}",
+                  "logo_url": "https://github.com/ClapeyronThermo/Clapeyron.jl/blob/master/docs/src/assets/logo.ico"
+                }
+              }
+            ]
+          }
+          EOF
+
+      - name: Publish BenchLedger page
+        working-directory: gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add benchmarks
+
+          if git diff --cached --quiet; then
+            echo "No benchmarks page changes to publish."
+          else
+            git commit -m "Update BenchLedger benchmark page"
+            git push origin HEAD:gh-pages
+          fi
+
+  backfill-benchmarks:
+    if: github.event_name == 'workflow_dispatch' && inputs.backfill == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check out Pages branch
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: gh-pages
+          fetch-depth: 1
+
+      - name: Check out Clapeyron target history
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.TARGET_REPOSITORY }}
+          ref: master
+          path: target/Clapeyron.jl
+          fetch-depth: 0
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: "1"
+
+      - name: Cache Julia packages
+        uses: julia-actions/cache@v2
+
+      - name: Instantiate benchmark project
+        run: julia --project=benchmark -e 'using Pkg; Pkg.instantiate()'
+
+      - name: Backfill historical benchmark database
+        run: |
+          set -euo pipefail
+
+          TARGET_DIR="${{ github.workspace }}/target/Clapeyron.jl"
+          DB="${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite"
+
+          mkdir -p "$(dirname "$DB")"
+
+          for tag in $(git -C "$TARGET_DIR" tag --sort=v:refname); do
+            echo "Backfilling benchmark for $tag"
+
+            git -C "$TARGET_DIR" checkout --detach "$tag"
+
+            commit="$(git -C "$TARGET_DIR" rev-parse HEAD)"
+            date="$(git -C "$TARGET_DIR" show -s --format=%cI HEAD)"
+
+            BENCH_TARGET_PATH="$TARGET_DIR" \
+            BENCH_DB_PATH="$DB" \
+            BENCH_DB_IN_CURRENT_BRANCH=false \
+            BENCH_BRANCH="" \
+            BENCH_TAG="$tag" \
+            BENCH_COMMIT="$commit" \
+            BENCH_DATE="$date" \
+            BENCH_NOTES="Backfilled with current benchmark suite against $tag" \
+            julia --project=benchmark benchmark/runbench.jl
+          done
+
+      - name: Checkpoint benchmark database
+        env:
+          BENCH_DB_PATH: ${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite
+        run: |
+          julia --project=benchmark -e 'using SQLite; db = SQLite.DB(ENV["BENCH_DB_PATH"]); SQLite.execute(db, "PRAGMA wal_checkpoint(TRUNCATE)"); close(db)'
+          rm -f "${BENCH_DB_PATH}-wal" "${BENCH_DB_PATH}-shm"
+
+      - name: Download BenchLedger web release
+        run: |
+          url="https://github.com/abcdvvvv/BenchLedger/releases/download/v${BENCHLEDGER_VERSION}/BenchLedger-${BENCHLEDGER_VERSION}-dist.tar.gz"
+          curl -fsSL "$url" -o /tmp/benchledger-dist.tar.gz
+          rm -rf /tmp/benchledger-dist
+          mkdir -p /tmp/benchledger-dist
+          tar -xzf /tmp/benchledger-dist.tar.gz -C /tmp/benchledger-dist
+
+      - name: Install BenchLedger viewer
+        run: |
+          mkdir -p gh-pages/benchmarks/data
+          find gh-pages/benchmarks -mindepth 1 -maxdepth 1 ! -name data -exec rm -rf {} +
+          cp -a /tmp/benchledger-dist/. gh-pages/benchmarks/
+
+      - name: Generate BenchLedger manifest
+        run: |
+          db="gh-pages/benchmarks/data/benchledger.sqlite"
+          generated_at="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
+          sha256="$(sha256sum "$db" | cut -d' ' -f1)"
+          size_bytes="$(stat -c '%s' "$db")"
+
+          cat > gh-pages/benchmarks/benchledger.json <<EOF
+          {
+            "manifest_version": 1,
+            "benchledger_web_version": "${BENCHLEDGER_VERSION}",
+            "generated_at": "${generated_at}",
+            "site": {
+              "title": "${BENCH_PACKAGE_NAME} BenchLedger",
+              "description": "${BENCH_PACKAGE_DESCRIPTION}"
+            },
+            "databases": [
+              {
+                "id": "${BENCH_PACKAGE_NAME}",
+                "name": "${BENCH_PACKAGE_NAME}",
+                "description": "${BENCH_PACKAGE_DESCRIPTION}",
+                "url": "./data/benchledger.sqlite",
+                "sha256": "${sha256}",
+                "size_bytes": ${size_bytes},
+                "packed_at": "${generated_at}",
+                "schema_version": 3,
+                "metadata_preview": {
+                  "name": "${BENCH_PACKAGE_NAME}",
+                  "project_url": "${BENCH_PACKAGE_URL}",
+                  "logo_url": "https://github.com/ClapeyronThermo/Clapeyron.jl/blob/master/docs/src/assets/logo.ico"
+                }
+              }
+            ]
+          }
+          EOF
+
+      - name: Publish BenchLedger page
+        working-directory: gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add benchmarks
+
+          if git diff --cached --quiet; then
+            echo "No benchmarks page changes to publish."
+          else
+            git commit -m "Backfill BenchLedger benchmark page"
+            git push origin HEAD:gh-pages
+          fi

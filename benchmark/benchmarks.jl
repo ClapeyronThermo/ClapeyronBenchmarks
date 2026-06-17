@@ -1,0 +1,117 @@
+# Benchmark Group Protocol:
+# Function + Secondary param + Property method + specific materials
+
+using Clapeyron
+
+function make_composite(comps, liquid, fluid)
+    try
+        return CompositeModel(comps; liquid=liquid, fluid=fluid)
+    catch
+        return CompositeModel(comps, liquid=liquid, fluid=fluid)
+    end
+end
+
+function first_metric_row(path::Vector{String}, value)
+    return (
+        benchmark_path=path,
+        metric_name="time",
+        statistic="first",
+        unit="ns",
+        value=Float64(value),
+        better="lower",
+    )
+end
+
+const comps_pr = ["propane", "n-butane", "n-pentane", "n-hexane"]
+const z_pr = [0.15, 0.35, 0.30, 0.20]
+const p_pr = 5.0e5
+
+const comps_nrtl_pr = ["water", "methanol", "ethanol", "acetone"]
+const z_nrtl_pr = [0.35, 0.25, 0.20, 0.20]
+const T_nrtl_pr = 333.15
+
+m_pr = nothing
+liq_nrtl = nothing
+vap_pr = nothing
+m_nrtl_pr = nothing
+Tb_pr = 0.0
+Td_pr = 0.0
+pb_nrtl_pr = 0.0
+pd_nrtl_pr = 0.0
+
+first_results = NamedTuple[]
+
+first_ns = @elapsed m_pr = PR(comps_pr)
+first_ns *= 1.0e9
+push!(first_results, first_metric_row(["model_build", "default", "PR", "propane/n-butane/n-pentane/n-hexane"], first_ns))
+
+first_ns = @elapsed liq_nrtl = NRTL(comps_nrtl_pr; puremodel=BasicIdeal)
+first_ns *= 1.0e9
+push!(first_results, first_metric_row(["model_build", "default", "NRTL", "water/methanol/ethanol/acetone"], first_ns))
+
+first_ns = @elapsed vap_pr = PR(comps_nrtl_pr)
+first_ns *= 1.0e9
+push!(first_results, first_metric_row(["model_build", "default", "PR", "water/methanol/ethanol/acetone"], first_ns))
+
+first_ns = @elapsed m_nrtl_pr = make_composite(comps_nrtl_pr, liq_nrtl, vap_pr)
+first_ns *= 1.0e9
+push!(first_results, first_metric_row(["model_build", "default", "NRTL_PR", "water/methanol/ethanol/acetone"], first_ns))
+
+first_ns = @elapsed Tb_pr = bubble_temperature(m_pr, p_pr, z_pr)[1]
+first_ns *= 1.0e9
+push!(first_results, first_metric_row(["bubble_temperature", "default", "PR", "propane/n-butane/n-pentane/n-hexane"], first_ns))
+
+first_ns = @elapsed Td_pr = dew_temperature(m_pr, p_pr, z_pr)[1]
+first_ns *= 1.0e9
+push!(first_results, first_metric_row(["dew_temperature", "default", "PR", "propane/n-butane/n-pentane/n-hexane"], first_ns))
+
+Tf_pr = 0.5 * (Tb_pr + Td_pr)
+first_ns = @elapsed tp_flash(m_pr, p_pr, Tf_pr, z_pr)
+first_ns *= 1.0e9
+push!(first_results, first_metric_row(["tp_flash", "default", "PR", "propane/n-butane/n-pentane/n-hexane"], first_ns))
+
+first_ns = @elapsed pb_nrtl_pr = bubble_pressure(m_nrtl_pr, T_nrtl_pr, z_nrtl_pr, ActivityBubblePressure())[1]
+first_ns *= 1.0e9
+push!(first_results, first_metric_row(["bubble_pressure", "ActivityBubblePressure", "NRTL_PR", "water/methanol/ethanol/acetone"], first_ns))
+
+first_ns = @elapsed pd_nrtl_pr = dew_pressure(m_nrtl_pr, T_nrtl_pr, z_nrtl_pr, ActivityDewPressure())[1]
+first_ns *= 1.0e9
+push!(first_results, first_metric_row(["dew_pressure", "ActivityDewPressure", "NRTL_PR", "water/methanol/ethanol/acetone"], first_ns))
+
+pf_nrtl_pr = sqrt(pb_nrtl_pr * pd_nrtl_pr)
+first_ns = @elapsed tp_flash(m_nrtl_pr, pf_nrtl_pr, T_nrtl_pr, z_nrtl_pr)
+first_ns *= 1.0e9
+push!(first_results, first_metric_row(["tp_flash", "default", "NRTL_PR", "water/methanol/ethanol/acetone"], first_ns))
+
+const SUITE = BenchmarkGroup()
+
+SUITE["bubble_temperature"] = BenchmarkGroup()
+SUITE["bubble_temperature"]["default"] = BenchmarkGroup()
+SUITE["bubble_temperature"]["default"]["PR"] = BenchmarkGroup()
+SUITE["bubble_temperature"]["default"]["PR"]["propane/n-butane/n-pentane/n-hexane"] = @benchmarkable bubble_temperature($m_pr, $p_pr, $z_pr)
+
+SUITE["dew_temperature"] = BenchmarkGroup()
+SUITE["dew_temperature"]["default"] = BenchmarkGroup()
+SUITE["dew_temperature"]["default"]["PR"] = BenchmarkGroup()
+SUITE["dew_temperature"]["default"]["PR"]["propane/n-butane/n-pentane/n-hexane"] = @benchmarkable dew_temperature($m_pr, $p_pr, $z_pr)
+
+SUITE["tp_flash"] = BenchmarkGroup()
+SUITE["tp_flash"]["default"] = BenchmarkGroup()
+SUITE["tp_flash"]["default"]["PR"] = BenchmarkGroup()
+SUITE["tp_flash"]["default"]["PR"]["propane/n-butane/n-pentane/n-hexane"] = @benchmarkable tp_flash($m_pr, $p_pr, $Tf_pr, $z_pr)
+SUITE["tp_flash"]["default"]["NRTL_PR"] = BenchmarkGroup()
+SUITE["tp_flash"]["default"]["NRTL_PR"]["water/methanol/ethanol/acetone"] = @benchmarkable tp_flash($m_nrtl_pr, $pf_nrtl_pr, $T_nrtl_pr, $z_nrtl_pr)
+
+SUITE["bubble_pressure"] = BenchmarkGroup()
+SUITE["bubble_pressure"]["ActivityBubblePressure"] = BenchmarkGroup()
+SUITE["bubble_pressure"]["ActivityBubblePressure"]["NRTL_PR"] = BenchmarkGroup()
+SUITE["bubble_pressure"]["ActivityBubblePressure"]["NRTL_PR"]["water/methanol/ethanol/acetone"] = @benchmarkable bubble_pressure($m_nrtl_pr, $T_nrtl_pr, $z_nrtl_pr, $(ActivityBubblePressure()))
+
+SUITE["dew_pressure"] = BenchmarkGroup()
+SUITE["dew_pressure"]["ActivityDewPressure"] = BenchmarkGroup()
+SUITE["dew_pressure"]["ActivityDewPressure"]["NRTL_PR"] = BenchmarkGroup()
+SUITE["dew_pressure"]["ActivityDewPressure"]["NRTL_PR"]["water/methanol/ethanol/acetone"] = @benchmarkable dew_pressure($m_nrtl_pr, $T_nrtl_pr, $z_nrtl_pr, $(ActivityDewPressure()))
+
+tune!(SUITE; seconds=2.0)
+suite_results = run(SUITE)
+results = (first_results, suite_results)
