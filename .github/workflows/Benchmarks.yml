@@ -109,20 +109,18 @@ jobs:
       - name: Cache Julia packages
         uses: julia-actions/cache@v2
 
-      - name: Instantiate benchmark project
-        run: julia --project=benchmark -e 'using Pkg; Pkg.instantiate()'
-
       - name: Run benchmarks into benchmark database
         env:
           BENCH_DB_IN_CURRENT_BRANCH: false
           BENCH_DB_PATH: ${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite
-          BENCH_TARGET_PATH: ${{ github.workspace }}/target/Clapeyron.jl
           BENCH_BRANCH: ${{ steps.target.outputs.branch }}
           BENCH_TAG: ${{ steps.target.outputs.tag }}
           BENCH_COMMIT: ${{ steps.target.outputs.commit }}
           BENCH_DATE: ${{ steps.target.outputs.date }}
           BENCH_NOTES: "GitHub Actions BenchLedger run"
         run: |
+          export BENCH_TARGET_PATH="${{ github.workspace }}/target/Clapeyron.jl"
+          test -d "$BENCH_TARGET_PATH"
           mkdir -p "$(dirname "$BENCH_DB_PATH")"
           julia --project=benchmark benchmark/runbench.jl
 
@@ -239,9 +237,6 @@ jobs:
 
       - name: Cache Julia packages
         uses: julia-actions/cache@v2
-
-      - name: Instantiate benchmark project
-        run: julia --project=benchmark -e 'using Pkg; Pkg.instantiate()'
 
       - name: Backfill historical benchmark database
         run: |
