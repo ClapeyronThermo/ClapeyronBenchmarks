@@ -15,6 +15,10 @@ on:
         description: "Oldest Clapeyron tag to include in backfill"
         required: false
         default: "v0.6.1"
+      backfill_to_tag:
+        description: "Newest Clapeyron tag to include in backfill"
+        required: false
+        default: "v0.6.25"
   push:
     branches:
       - master
@@ -29,12 +33,13 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BENCHLEDGER_VERSION: "0.3.1"
+  BENCHLEDGER_VERSION: "0.3.2"
   BENCH_PACKAGE_NAME: "Clapeyron.jl"
   BENCH_PACKAGE_DESCRIPTION: "Benchmark history for Clapeyron.jl"
   BENCH_PACKAGE_URL: "https://github.com/ClapeyronThermo/Clapeyron.jl"
   TARGET_REPOSITORY: "ClapeyronThermo/Clapeyron.jl"
   BACKFILL_FROM_TAG: "v0.6.1"
+  BACKFILL_TO_TAG: "v0.6.25"
 
 jobs:
   build-and-publish:
@@ -249,6 +254,7 @@ jobs:
           TARGET_DIR="${{ github.workspace }}/target/Clapeyron.jl"
           DB="${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite"
           BACKFILL_FROM_TAG="${{ inputs.backfill_from_tag || env.BACKFILL_FROM_TAG }}"
+          BACKFILL_TO_TAG="${{ inputs.backfill_to_tag || env.BACKFILL_TO_TAG }}"
           started=false
 
           mkdir -p "$(dirname "$DB")"
@@ -278,12 +284,33 @@ jobs:
             BENCH_DATE="$date" \
             BENCH_NOTES="Backfilled with current benchmark suite against $tag" \
             julia --project=benchmark benchmark/runbench.jl
+
+            if [ -n "$BACKFILL_TO_TAG" ] && [ "$tag" = "$BACKFILL_TO_TAG" ]; then
+              break
+            fi
           done
 
           if [ "$started" = false ]; then
             echo "Requested backfill_from_tag '$BACKFILL_FROM_TAG' was not found in $TARGET_REPOSITORY tags." >&2
             exit 1
           fi
+
+      - name: Checkpoint partial benchmark database
+        if: always()
+        env:
+          BENCH_DB_PATH: ${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite
+        run: |
+          if [ -f "$BENCH_DB_PATH" ]; then
+            julia --project=benchmark -e 'using SQLite; db = SQLite.DB(ENV["BENCH_DB_PATH"]); SQLite.execute(db, "PRAGMA wal_checkpoint(TRUNCATE)"); close(db)'
+            rm -f "${BENCH_DB_PATH}-wal" "${BENCH_DB_PATH}-shm"
+          fi
+
+      - name: Upload partial benchmark database
+        if: always() && hashFiles('gh-pages/benchmarks/data/benchledger.sqlite') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: clapeyron-backfill-db-${{ github.run_id }}
+          path: gh-pages/benchmarks/data/benchledger.sqlite
 
       - name: Checkpoint benchmark database
         env:

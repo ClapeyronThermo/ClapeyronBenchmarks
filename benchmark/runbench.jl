@@ -17,7 +17,9 @@ const Benchledger_Metadata_Defaults = (
     name="Clapeyron.jl",
     description="Benchmark history for Clapeyron.jl",
     project_url="https://github.com/ClapeyronThermo/Clapeyron.jl",
-    logo_url="https://github.com/ClapeyronThermo/Clapeyron.jl/blob/master/docs/src/assets/logo.ico",
+    logo_url="",
+    logo_url_light="https://raw.githubusercontent.com/ClapeyronThermo/Clapeyron.jl/master/docs/src/assets/logos/Clapeyron_logo.svg",
+    logo_url_dark="https://raw.githubusercontent.com/ClapeyronThermo/Clapeyron.jl/master/docs/src/assets/logos/Clapeyron_logo_dark.svg",
     notes="",
 )
 # ⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃⌃
