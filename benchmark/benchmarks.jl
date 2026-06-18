@@ -39,6 +39,8 @@ Td_pr = 0.0
 pb_nrtl_pr = 0.0
 pd_nrtl_pr = 0.0
 
+# Test the time of first call
+
 first_results = NamedTuple[]
 
 first_ns = @elapsed m_pr = PR(comps_pr)
@@ -82,6 +84,8 @@ pf_nrtl_pr = sqrt(pb_nrtl_pr * pd_nrtl_pr)
 first_ns = @elapsed tp_flash(m_nrtl_pr, pf_nrtl_pr, T_nrtl_pr, z_nrtl_pr)
 first_ns *= 1.0e9
 push!(first_results, first_metric_row(["tp_flash", "default", "NRTL_PR", "water/methanol/ethanol/acetone"], first_ns))
+
+# Test regular call time
 
 const SUITE = BenchmarkGroup()
 
