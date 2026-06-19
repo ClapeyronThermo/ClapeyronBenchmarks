@@ -45,19 +45,19 @@ first_results = NamedTuple[]
 
 first_ns = @elapsed m_pr = PR(comps_pr)
 first_ns *= 1.0e9
-push!(first_results, first_metric_row(["model_build", "default", "PR", "propane/n-butane/n-pentane/n-hexane"], first_ns))
+push!(first_results, first_metric_row(["PR", "BasicIdeal", "PR", "propane/n-butane/n-pentane/n-hexane"], first_ns))
 
 first_ns = @elapsed liq_nrtl = NRTL(comps_nrtl_pr; puremodel=BasicIdeal)
 first_ns *= 1.0e9
-push!(first_results, first_metric_row(["model_build", "default", "NRTL", "water/methanol/ethanol/acetone"], first_ns))
+push!(first_results, first_metric_row(["NRTL", "BasicIdeal", "NRTL", "water/methanol/ethanol/acetone"], first_ns))
 
 first_ns = @elapsed vap_pr = PR(comps_nrtl_pr)
 first_ns *= 1.0e9
-push!(first_results, first_metric_row(["model_build", "default", "PR", "water/methanol/ethanol/acetone"], first_ns))
+push!(first_results, first_metric_row(["PR", "BasicIdeal", "PR", "water/methanol/ethanol/acetone"], first_ns))
 
 first_ns = @elapsed m_nrtl_pr = make_composite(comps_nrtl_pr, liq_nrtl, vap_pr)
 first_ns *= 1.0e9
-push!(first_results, first_metric_row(["model_build", "default", "NRTL_PR", "water/methanol/ethanol/acetone"], first_ns))
+push!(first_results, first_metric_row(["NRTL_PR", "BasicIdeal/BasicIdeal", "NRTL_PR", "water/methanol/ethanol/acetone"], first_ns))
 
 first_ns = @elapsed Tb_pr = bubble_temperature(m_pr, p_pr, z_pr)[1]
 first_ns *= 1.0e9
