@@ -116,6 +116,8 @@ SUITE["dew_pressure"]["ActivityDewPressure"] = BenchmarkGroup()
 SUITE["dew_pressure"]["ActivityDewPressure"]["NRTL_PR"] = BenchmarkGroup()
 SUITE["dew_pressure"]["ActivityDewPressure"]["NRTL_PR"]["water/methanol/ethanol/acetone"] = @benchmarkable dew_pressure($m_nrtl_pr, $T_nrtl_pr, $z_nrtl_pr, $(ActivityDewPressure()))
 
+
+include("cubic_two_phase.jl")
 tune!(SUITE; seconds=2.0)
 suite_results = run(SUITE)
 results = (first_results, suite_results)
