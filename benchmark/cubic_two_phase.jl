@@ -26,57 +26,37 @@ function cubic_ph_flash(SUITE::BenchmarkGroup)
     SUITE["PH.temperature"] = BenchmarkGroup()
     SUITE["PH.temperature"]["default"] = BenchmarkGroup()
     SUITE["PH.temperature"]["default"][eos_name] = BenchmarkGroup()
-    SUITE["PH.temperature"]["default"][eos_name]["pentane/isopentane"] =  @benchmarkable try
-            Clapeyron.PH.temperature($m_, $p0,$h_, $z0)
-            catch
-                 nothing
-            end
+    SUITE["PH.temperature"]["default"][eos_name]["pentane/isopentane"] =  @benchmarkable Clapeyron.PH.temperature($m_, $p0,$h_, $z0)
+
 
 
     SUITE["PH.entropy"] = BenchmarkGroup()
     SUITE["PH.entropy"]["default"] = BenchmarkGroup()
     SUITE["PH.entropy"]["default"][eos_name] = BenchmarkGroup()
-    SUITE["PH.entropy"]["default"][eos_name]["pentane/isopentane"]  = @benchmarkable begin
-            try
-                Clapeyron.PH.entropy($m_, $p0,$h_, $z0)
-            catch
-                nothing
-            end
-        end
+    SUITE["PH.entropy"]["default"][eos_name]["pentane/isopentane"]  = @benchmarkable Clapeyron.PH.entropy($m_, $p0,$h_, $z0)
+
 
     hv = enthalpy(m_, p0, Td + 10, z0)
     hl = enthalpy(m_, p0, Tb - 10, z0)
     SUITE["PH.temperature"]["phase=:liquid"] = BenchmarkGroup()
     SUITE["PH.temperature"]["phase=:liquid"][eos_name] = BenchmarkGroup()
-    SUITE["PH.temperature"]["phase=:liquid"][eos_name]["pentane/isopentane"] =  @benchmarkable try
-                Clapeyron.PH.temperature($m_, $p0,$hl, $z0, phase = :liquid)
-            catch
-                nothing
-            end
+    SUITE["PH.temperature"]["phase=:liquid"][eos_name]["pentane/isopentane"] =  @benchmarkable Clapeyron.PH.temperature($m_, $p0,$hl, $z0, phase = :liquid)
+
     
     SUITE["PH.temperature"]["phase=:gas"] = BenchmarkGroup()
     SUITE["PH.temperature"]["phase=:gas"][eos_name] = BenchmarkGroup()
-    SUITE["PH.temperature"]["phase=:gas"][eos_name]["pentane/isopentane"] =  @benchmarkable try
-                Clapeyron.PH.temperature($m_, $p0,$hv, $z0, phase = :gas)
-            catch
-                nothing
-            end
+    SUITE["PH.temperature"]["phase=:gas"][eos_name]["pentane/isopentane"] =  @benchmarkable Clapeyron.PH.temperature($m_, $p0,$hv, $z0, phase = :gas)
+
     
     SUITE["PH.entropy"]["phase=:liquid"] = BenchmarkGroup()
     SUITE["PH.entropy"]["phase=:liquid"][eos_name] = BenchmarkGroup()
-    SUITE["PH.entropy"]["phase=:liquid"][eos_name]["pentane/isopentane"] =  @benchmarkable try
-                Clapeyron.PH.entropy($m_, $p0,$hl, $z0, phase = :liquid)
-            catch
-                nothing
-            end
+    SUITE["PH.entropy"]["phase=:liquid"][eos_name]["pentane/isopentane"] =  @benchmarkable Clapeyron.PH.entropy($m_, $p0,$hl, $z0, phase = :liquid)
+
     
     SUITE["PH.entropy"]["phase=:gas"] = BenchmarkGroup()
     SUITE["PH.entropy"]["phase=:gas"][eos_name] = BenchmarkGroup()
-    SUITE["PH.entropy"]["phase=:gas"][eos_name]["pentane/isopentane"] =  @benchmarkable try
-                Clapeyron.PH.entropy($m_, $p0,$hv, $z0, phase = :gas)
-            catch
-                nothing
-            end
+    SUITE["PH.entropy"]["phase=:gas"][eos_name]["pentane/isopentane"] =  @benchmarkable Clapeyron.PH.entropy($m_, $p0,$hv, $z0, phase = :gas)
+
 
 
     end
