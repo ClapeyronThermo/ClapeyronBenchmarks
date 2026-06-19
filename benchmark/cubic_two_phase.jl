@@ -27,10 +27,11 @@ function cubic_ph_flash(SUITE::BenchmarkGroup)
     SUITE["PH.temperature"]["default"] = BenchmarkGroup()
     SUITE["PH.temperature"]["default"][eos_name] = BenchmarkGroup()
     SUITE["PH.temperature"]["default"][eos_name]["pentane/isopentane"] =  @benchmarkable try
-                Clapeyron.PH.temperature($m_, $p0,$h_, $z0)
+            Clapeyron.PH.temperature($m_, $p0,$h_, $z0)
             catch
-                nothing
+                 nothing
             end
+
 
     SUITE["PH.entropy"] = BenchmarkGroup()
     SUITE["PH.entropy"]["default"] = BenchmarkGroup()
@@ -81,5 +82,6 @@ function cubic_ph_flash(SUITE::BenchmarkGroup)
     end
 end
 
-
-cubic_ph_flash(SUITE)
+if Base.pkgversion(Clapeyron) >= v"0.6.8"
+    cubic_ph_flash(SUITE)
+end
