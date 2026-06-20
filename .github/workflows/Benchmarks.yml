@@ -33,7 +33,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BENCHLEDGER_VERSION: "0.3.4"
+  BENCHLEDGER_VERSION: "0.4.1"
   BENCH_PACKAGE_NAME: "Clapeyron.jl"
   BENCH_PACKAGE_DESCRIPTION: "Benchmark history for Clapeyron.jl"
   BENCH_PACKAGE_URL: "https://github.com/ClapeyronThermo/Clapeyron.jl"
