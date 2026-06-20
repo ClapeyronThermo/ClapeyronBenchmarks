@@ -65,6 +65,7 @@ version = "0.10.16"
 
 [[deps.Clapeyron]]
 deps = ["CSV", "DiffResults", "DifferentiationInterface", "Downloads", "FillArrays", "ForwardDiff", "IFTDuals", "JSON", "LinearAlgebra", "LogExpFunctions", "NLSolvers", "OrderedCollections", "PackedVectorsOfVectors", "PositiveFactorizations", "PrecompileTools", "Preferences", "Random", "Roots", "Scratch", "SparseArrays", "SpecialFunctions", "StableTasks", "StaticArrays", "Tables", "UUIDs"]
+git-tree-sha1 = "6328412e1f489e881579aecf5b14ca9763e1a8da"
 uuid = "7c7805af-46cc-48c9-995b-ed0ed2dc909a"
 version = "0.6.25"
 
