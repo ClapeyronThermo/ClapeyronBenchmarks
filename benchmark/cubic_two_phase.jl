@@ -1,4 +1,4 @@
-const Cubic_Models = (PR, cPR, SRK, RK, KU)
+const Cubic_Models = (PR, tcPR, RK, SRK, KU)
 
 """
 benchmarking two phase falsh computations for cubic eos
@@ -10,6 +10,15 @@ function cubic_ph_flash(Suite::BenchmarkGroup)
 
     T_dew(model) = dew_temperature(model, p0, z0)[1]
     T_bub(model) = bubble_temperature(model, p0, z0)[1]
+
+    Suite["PH.temperature"] = BenchmarkGroup()
+    Suite["PH.temperature"]["two-phase"] = BenchmarkGroup()
+    Suite["PH.temperature"]["liquid-phase"] = BenchmarkGroup()
+    Suite["PH.temperature"]["vapour-phase"] = BenchmarkGroup()
+    Suite["PH.entropy"] = BenchmarkGroup()
+    Suite["PH.entropy"]["two-phase"] = BenchmarkGroup()
+    Suite["PH.entropy"]["liquid-phase"] = BenchmarkGroup()
+    Suite["PH.entropy"]["vapour-phase"] = BenchmarkGroup()
 
     for eos_constructor in Cubic_Models
         eos_name = string(eos_constructor)
@@ -31,13 +40,9 @@ function cubic_ph_flash(Suite::BenchmarkGroup)
         first_s = @elapsed Clapeyron.PH.entropy(m_, p0, h_, z0)
         push!(first_results, first_metric_row(["PH.entropy", "two-phase", eos_name, fluid_label], first_s, "s"))
 
-        Suite["PH.temperature"] = BenchmarkGroup()
-        Suite["PH.temperature"]["two-phase"] = BenchmarkGroup()
         Suite["PH.temperature"]["two-phase"][eos_name] = BenchmarkGroup()
         Suite["PH.temperature"]["two-phase"][eos_name]["pentane/isopentane"] = @benchmarkable Clapeyron.PH.temperature($m_, $p0, $h_, $z0)
 
-        Suite["PH.entropy"] = BenchmarkGroup()
-        Suite["PH.entropy"]["two-phase"] = BenchmarkGroup()
         Suite["PH.entropy"]["two-phase"][eos_name] = BenchmarkGroup()
         Suite["PH.entropy"]["two-phase"][eos_name]["pentane/isopentane"] = @benchmarkable Clapeyron.PH.entropy($m_, $p0, $h_, $z0)
 
@@ -56,19 +61,15 @@ function cubic_ph_flash(Suite::BenchmarkGroup)
         first_s = @elapsed Clapeyron.PH.entropy(m_, p0, hv, z0)
         push!(first_results, first_metric_row(["PH.entropy", "vapour-phase", eos_name, fluid_label], first_s, "s"))
 
-        Suite["PH.temperature"]["liquid-phase"] = BenchmarkGroup()
         Suite["PH.temperature"]["liquid-phase"][eos_name] = BenchmarkGroup()
         Suite["PH.temperature"]["liquid-phase"][eos_name]["pentane/isopentane"] = @benchmarkable Clapeyron.PH.temperature($m_, $p0, $hl, $z0)
 
-        Suite["PH.temperature"]["vapour-phase"] = BenchmarkGroup()
         Suite["PH.temperature"]["vapour-phase"][eos_name] = BenchmarkGroup()
         Suite["PH.temperature"]["vapour-phase"][eos_name]["pentane/isopentane"] = @benchmarkable Clapeyron.PH.temperature($m_, $p0, $hv, $z0)
 
-        Suite["PH.entropy"]["liquid-phase"] = BenchmarkGroup()
         Suite["PH.entropy"]["liquid-phase"][eos_name] = BenchmarkGroup()
         Suite["PH.entropy"]["liquid-phase"][eos_name]["pentane/isopentane"] = @benchmarkable Clapeyron.PH.entropy($m_, $p0, $hl, $z0)
 
-        Suite["PH.entropy"]["vapour-phase"] = BenchmarkGroup()
         Suite["PH.entropy"]["vapour-phase"][eos_name] = BenchmarkGroup()
         Suite["PH.entropy"]["vapour-phase"][eos_name]["pentane/isopentane"] = @benchmarkable Clapeyron.PH.entropy($m_, $p0, $hv, $z0)
     end
