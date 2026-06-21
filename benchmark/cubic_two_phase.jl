@@ -7,7 +7,6 @@ function cubic_ph_flash(Suite::BenchmarkGroup)
     fluids = ["pentane", "isopentane"] # High glide
     p0 = 101325
     z0 = [1.0, 1.0]
-    Suite["PH_FLASH"] = BenchmarkGroup()
 
     T_dew(model) = dew_temperature(model, p0, z0)[1]
     T_bub(model) = bubble_temperature(model, p0, z0)[1]
