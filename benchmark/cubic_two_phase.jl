@@ -1,4 +1,4 @@
-const Cubic_Models = (PR, tcPR, RK, SRK, KU)
+const Cubic_Models = (RK, SRK, PR, cPR, KU)
 
 """
 benchmarking two phase falsh computations for cubic eos
