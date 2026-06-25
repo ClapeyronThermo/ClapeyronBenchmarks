@@ -46,7 +46,7 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || inputs.backfill != 'true'
     name: Ubuntu 24.04 - x64
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 2880
 
     steps:
       - name: Check out source

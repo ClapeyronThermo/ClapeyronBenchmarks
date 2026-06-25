@@ -4,13 +4,6 @@
 
 Benchmark infrastructure and historical performance tracking for [Clapeyron.jl](https://github.com/ClapeyronThermo/Clapeyron.jl).
 
-## Currently Enabled Benchmark Suites
-
-| Suite | Purpose | Source file(s) |
-| --- | --- | --- |
-| First-call latency | Measures one-time model construction and selected solver cold-start calls | `benchmark/first_call.jl` |
-| Steady-state multiphase and bulk properties | Measures tuned steady-state performance for VLE, PH, saturation, bulk, gas, and electrolyte property calls | `benchmark/multiphase_properties.jl` |
-
 ## Benchmark Systems and Model Coverage
 
 | Benchmark system | Composition / components | Reference state | Models currently benchmarked |
@@ -33,6 +26,8 @@ Benchmark infrastructure and historical performance tracking for [Clapeyron.jl](
 
 ## Steady-State Benchmark Coverage
 
+### By benchmark path
+
 | Benchmark path | Variants | Common mixture | GERG2008 mixture | Pure water (`IAPWS95`) | Electrolyte (`ePCSAFT`) |
 | --- | --- | --- | --- | --- | --- |
 | `bubble_temperature` | `default` | `PR`, `tcPR`, `VTPR`, `CPA`, `CKSAFT`, `SAFTVRMie`, `SAFTgammaMie`, `NRTL`, `UNIFAC`, `NRTL_PR` | `GERG2008` | — | — |
@@ -52,3 +47,12 @@ Benchmark infrastructure and historical performance tracking for [Clapeyron.jl](
 | `mean_ionic_activity_coefficient` | `default` | — | — | — | `ePCSAFT` |
 | `osmotic_coefficient` | `default` | — | — | — | `ePCSAFT` |
 | `osmotic_coefficient_sat` | `default` | — | — | — | `ePCSAFT` |
+
+### By source file
+
+| Source file | Responsibility | Benchmark paths registered |
+| --- | --- | --- |
+| `benchmark/multiphase_properties.jl` | Initializes the steady-state benchmark group structure and registers multicomponent VLE benchmarks. | `bubble_temperature/default`, `dew_temperature/default`, `tp_flash/default`, `bubble_pressure/ActivityBubblePressure`, `dew_pressure/ActivityDewPressure` |
+| `benchmark/bulk_properties.jl` | Registers PH and bulk-property benchmarks for common mixtures, pure fluids, and gas systems. | `PH.temperature/{two-phase, liquid-phase, vapour-phase}`, `PH.entropy/{two-phase, liquid-phase, vapour-phase}`, `volume/{liquid-phase, vapour-phase}`, `enthalpy/{liquid-phase, vapour-phase}`, `isobaric_heat_capacity/{liquid-phase, vapour-phase}`, `speed_of_sound/{liquid-phase, vapour-phase}`, `joule_thomson_coefficient/vapour-phase` |
+| `benchmark/single_phase_properties.jl` | Registers pure-fluid saturation benchmarks. | `saturation_temperature/default`, `saturation_pressure/default` |
+| `benchmark/electrolyte_properties.jl` | Registers electrolyte solution property benchmarks. | `volume/liquid-phase`, `mean_ionic_activity_coefficient/default`, `osmotic_coefficient/default`, `osmotic_coefficient_sat/default` |
