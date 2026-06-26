@@ -361,6 +361,7 @@ jobs:
             if BENCH_TARGET_PATH="$TARGET_DIR" \
               BENCH_DB_PATH="$DB" \
               BENCH_DB_IN_CURRENT_BRANCH=false \
+              BENCH_BEST_EFFORT=true \
               BENCH_SOURCE_TAGS="$tag" \
               BENCH_SOURCE_REVISION="$commit" \
               BENCH_DATE="$date" \
@@ -522,6 +523,7 @@ jobs:
           BENCH_TARGET_PATH="$TARGET_DIR" \
           BENCH_DB_PATH="$DB" \
           BENCH_DB_IN_CURRENT_BRANCH=false \
+          BENCH_BEST_EFFORT=true \
           BENCH_SOURCE_TAGS="$TAG" \
           BENCH_SOURCE_REVISION="$commit" \
           BENCH_DATE="$date" \
