@@ -10,8 +10,14 @@ include("single_phase_properties.jl")
 include("electrolyte_properties.jl")
 include("multiphase_properties.jl")
 
-first_results = first_call_benchmarks()
-add_all_benchmarks!(Suite)
+first_results = guard_benchmark(benchmark_path("first_call")) do
+    first_call_benchmarks()
+end
+isnothing(first_results) && (first_results = NamedTuple[])
+
+guard_benchmark(benchmark_path("steady_state")) do
+    add_all_benchmarks!(Suite)
+end
 
 tune!(Suite; seconds=2.0)
 suite_results = run(Suite)

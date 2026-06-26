@@ -47,6 +47,51 @@ const BenchmarkSystems = (
     ),
 )
 
+const Bench_Best_Effort = lowercase(get(ENV, "BENCH_BEST_EFFORT", "false")) in ("true", "1", "yes")
+
+benchmark_path(parts...) = String[string(part) for part in parts]
+
+function log_benchmark_skip(path::Vector{String}, err)
+    println(stderr, "Skipping benchmark ", join(path, " / "), ": ", sprint(showerror, err))
+end
+
+function guard_benchmark(path::Vector{String}, f::Function)
+    if !Bench_Best_Effort
+        return f()
+    end
+
+    try
+        return f()
+    catch err
+        log_benchmark_skip(path, err)
+        return nothing
+    end
+end
+
+function push_first_call!(rows::Vector{NamedTuple}, path::Vector{String}, f::Function)
+    guard_benchmark(path) do
+        elapsed = @elapsed value = f()
+        push!(rows, first_metric_row(path, elapsed, "s"))
+        value
+    end
+end
+
+function register_benchmark!(group::BenchmarkGroup, model_name::AbstractString, fluid_label::AbstractString,
+    path::Vector{String}, probe::Function, build::Function)
+    guard_benchmark(path) do
+        Bench_Best_Effort && probe()
+        group[String(model_name)] = BenchmarkGroup()
+        group[String(model_name)][fluid_label] = build()
+    end
+    nothing
+end
+
+function push_model!(models, name::AbstractString, path::Vector{String}, f::Function)
+    model = guard_benchmark(path, f)
+    !isnothing(model) && push!(models, (String(name), model))
+    model
+end
+
 function first_metric_row(path::Vector{String}, value::Real, unit::String)
     return (
         benchmark_path=path,

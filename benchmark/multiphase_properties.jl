@@ -62,18 +62,30 @@ end
 
 function add_vle_benchmarks!(Suite::BenchmarkGroup, models, p, z, fluid_label)
     for (model_name, model) in models
-        Tb = bubble_temperature(model, p, z)[1]
-        Td = dew_temperature(model, p, z)[1]
-        Tf = (Tb + Td) / 2
+        Tb = guard_benchmark(benchmark_path("bubble_temperature", "default", model_name, fluid_label)) do
+            bubble_temperature(model, p, z)[1]
+        end
+        Td = guard_benchmark(benchmark_path("dew_temperature", "default", model_name, fluid_label)) do
+            dew_temperature(model, p, z)[1]
+        end
 
-        Suite["bubble_temperature"]["default"][model_name] = BenchmarkGroup()
-        Suite["bubble_temperature"]["default"][model_name][fluid_label] = @benchmarkable bubble_temperature($model, $p, $z)
+        register_benchmark!(Suite["bubble_temperature"]["default"], model_name, fluid_label,
+            benchmark_path("bubble_temperature", "default", model_name, fluid_label),
+            () -> bubble_temperature(model, p, z),
+            () -> @benchmarkable bubble_temperature($model, $p, $z))
 
-        Suite["dew_temperature"]["default"][model_name] = BenchmarkGroup()
-        Suite["dew_temperature"]["default"][model_name][fluid_label] = @benchmarkable dew_temperature($model, $p, $z)
+        register_benchmark!(Suite["dew_temperature"]["default"], model_name, fluid_label,
+            benchmark_path("dew_temperature", "default", model_name, fluid_label),
+            () -> dew_temperature(model, p, z),
+            () -> @benchmarkable dew_temperature($model, $p, $z))
 
-        Suite["tp_flash"]["default"][model_name] = BenchmarkGroup()
-        Suite["tp_flash"]["default"][model_name][fluid_label] = @benchmarkable tp_flash($model, $p, $Tf, $z)
+        if !isnothing(Tb) && !isnothing(Td)
+            Tf = (Tb + Td) / 2
+            register_benchmark!(Suite["tp_flash"]["default"], model_name, fluid_label,
+                benchmark_path("tp_flash", "default", model_name, fluid_label),
+                () -> tp_flash(model, p, Tf, z),
+                () -> @benchmarkable tp_flash($model, $p, $Tf, $z))
+        end
     end
     nothing
 end
@@ -83,15 +95,26 @@ function add_activity_pressure_benchmarks!(Suite::BenchmarkGroup, models, p, z, 
     dew_method = ActivityDewPressure()
 
     for (model_name, model) in models
-        Tb = bubble_temperature(model, p, z)[1]
-        Td = dew_temperature(model, p, z)[1]
-        T = (Tb + Td) / 2
+        Tb = guard_benchmark(benchmark_path("bubble_pressure", "ActivityBubblePressure", model_name, fluid_label)) do
+            bubble_temperature(model, p, z)[1]
+        end
+        Td = guard_benchmark(benchmark_path("dew_pressure", "ActivityDewPressure", model_name, fluid_label)) do
+            dew_temperature(model, p, z)[1]
+        end
 
-        Suite["bubble_pressure"]["ActivityBubblePressure"][model_name] = BenchmarkGroup()
-        Suite["bubble_pressure"]["ActivityBubblePressure"][model_name][fluid_label] = @benchmarkable bubble_pressure($model, $T, $z, $bubble_method)
+        if !isnothing(Tb) && !isnothing(Td)
+            T = (Tb + Td) / 2
 
-        Suite["dew_pressure"]["ActivityDewPressure"][model_name] = BenchmarkGroup()
-        Suite["dew_pressure"]["ActivityDewPressure"][model_name][fluid_label] = @benchmarkable dew_pressure($model, $T, $z, $dew_method)
+            register_benchmark!(Suite["bubble_pressure"]["ActivityBubblePressure"], model_name, fluid_label,
+                benchmark_path("bubble_pressure", "ActivityBubblePressure", model_name, fluid_label),
+                () -> bubble_pressure(model, T, z, bubble_method),
+                () -> @benchmarkable bubble_pressure($model, $T, $z, $bubble_method))
+
+            register_benchmark!(Suite["dew_pressure"]["ActivityDewPressure"], model_name, fluid_label,
+                benchmark_path("dew_pressure", "ActivityDewPressure", model_name, fluid_label),
+                () -> dew_pressure(model, T, z, dew_method),
+                () -> @benchmarkable dew_pressure($model, $T, $z, $dew_method))
+        end
     end
     nothing
 end
@@ -101,19 +124,47 @@ function add_all_benchmarks!(Suite::BenchmarkGroup)
     common = BenchmarkSystems.common
     common_label = join(common.components, "/")
 
-    m_pr = PR(common.components; idealmodel=ReidIdeal)
-    m_tcpr = tcPR(common.components; idealmodel=ReidIdeal)
-    m_vtpr = VTPR(common.components; idealmodel=ReidIdeal)
-    m_cpa = CPA(common.components; idealmodel=ReidIdeal, assoc_options=AssocOptions(combining=:esd))
-    m_cksaft = CKSAFT(common.components; idealmodel=ReidIdeal)
-    m_saftvrmie = SAFTVRMie(common.components; idealmodel=ReidIdeal)
-    m_saftgammamie = SAFTgammaMie(common.saftgammamie_components; idealmodel=ReidIdeal)
-    m_nrtl = NRTL(common.components; puremodel=m_pr)
-    m_unifac = UNIFAC(common.components; puremodel=m_pr)
-    m_nrtl_pr = CompositeModel(common.components; liquid=m_nrtl, fluid=m_pr)
+    common_models = Tuple{String,Any}[]
 
-    common_models = (("PR", m_pr), ("tcPR", m_tcpr), ("VTPR", m_vtpr), ("CPA", m_cpa), ("CKSAFT", m_cksaft), ("SAFTVRMie", m_saftvrmie), ("SAFTgammaMie", m_saftgammamie), ("NRTL", m_nrtl), ("UNIFAC", m_unifac), ("NRTL_PR", m_nrtl_pr))
-    common_activity_models = (("NRTL", m_nrtl), ("UNIFAC", m_unifac), ("NRTL_PR", m_nrtl_pr))
+    m_pr = push_model!(common_models, "PR", benchmark_path("models", "PR", common_label)) do
+        PR(common.components; idealmodel=ReidIdeal)
+    end
+    push_model!(common_models, "tcPR", benchmark_path("models", "tcPR", common_label)) do
+        tcPR(common.components; idealmodel=ReidIdeal)
+    end
+    push_model!(common_models, "VTPR", benchmark_path("models", "VTPR", common_label)) do
+        VTPR(common.components; idealmodel=ReidIdeal)
+    end
+    push_model!(common_models, "CPA", benchmark_path("models", "CPA", common_label)) do
+        CPA(common.components; idealmodel=ReidIdeal, assoc_options=AssocOptions(combining=:esd))
+    end
+    push_model!(common_models, "CKSAFT", benchmark_path("models", "CKSAFT", common_label)) do
+        CKSAFT(common.components; idealmodel=ReidIdeal)
+    end
+    push_model!(common_models, "SAFTVRMie", benchmark_path("models", "SAFTVRMie", common_label)) do
+        SAFTVRMie(common.components; idealmodel=ReidIdeal)
+    end
+    push_model!(common_models, "SAFTgammaMie", benchmark_path("models", "SAFTgammaMie", common_label)) do
+        SAFTgammaMie(common.saftgammamie_components; idealmodel=ReidIdeal)
+    end
+    m_nrtl = isnothing(m_pr) ? nothing : push_model!(common_models, "NRTL", benchmark_path("models", "NRTL", common_label)) do
+        NRTL(common.components; puremodel=m_pr)
+    end
+    m_unifac = isnothing(m_pr) ? nothing : push_model!(common_models, "UNIFAC", benchmark_path("models", "UNIFAC", common_label)) do
+        UNIFAC(common.components; puremodel=m_pr)
+    end
+    m_nrtl_pr = if isnothing(m_pr) || isnothing(m_nrtl)
+        nothing
+    else
+        push_model!(common_models, "NRTL_PR", benchmark_path("models", "NRTL_PR", common_label)) do
+            CompositeModel(common.components; liquid=m_nrtl, fluid=m_pr)
+        end
+    end
+
+    common_activity_models = Tuple{String,Any}[]
+    !isnothing(m_nrtl) && push!(common_activity_models, ("NRTL", m_nrtl))
+    !isnothing(m_unifac) && push!(common_activity_models, ("UNIFAC", m_unifac))
+    !isnothing(m_nrtl_pr) && push!(common_activity_models, ("NRTL_PR", m_nrtl_pr))
 
     add_vle_benchmarks!(Suite, common_models, common.p, common.z, common_label)
     add_activity_pressure_benchmarks!(Suite, common_activity_models, common.p, common.z, common_label)
@@ -122,25 +173,33 @@ function add_all_benchmarks!(Suite::BenchmarkGroup)
 
     gerg2008 = BenchmarkSystems.gerg2008
     gerg2008_label = join(gerg2008.components, "/")
-    m_gerg2008 = GERG2008(gerg2008.components)
-    gerg2008_models = (("GERG2008", m_gerg2008),)
+    gerg2008_models = Tuple{String,Any}[]
+    m_gerg2008 = push_model!(gerg2008_models, "GERG2008", benchmark_path("models", "GERG2008", gerg2008_label)) do
+        GERG2008(gerg2008.components)
+    end
 
     add_vle_benchmarks!(Suite, gerg2008_models, gerg2008.p, gerg2008.z, gerg2008_label)
     add_ph_benchmarks!(Suite, gerg2008_models, gerg2008.p, gerg2008.z, gerg2008_label)
-    add_gas_bulk_benchmarks!(Suite, "GERG2008", m_gerg2008, gerg2008.p, gerg2008.T, gerg2008.z, gerg2008_label)
+    !isnothing(m_gerg2008) && add_gas_bulk_benchmarks!(Suite, "GERG2008", m_gerg2008, gerg2008.p, gerg2008.T, gerg2008.z, gerg2008_label)
 
     iapws95 = BenchmarkSystems.iapws95
     iapws95_label = join(iapws95.components, "/")
-    m_iapws95 = IAPWS95()
+    m_iapws95 = guard_benchmark(benchmark_path("models", "IAPWS95", iapws95_label)) do
+        IAPWS95()
+    end
 
-    add_pure_saturation_benchmarks!(Suite, "IAPWS95", m_iapws95, iapws95.p, iapws95_label)
-    add_pure_ph_benchmarks!(Suite, "IAPWS95", m_iapws95, iapws95.p, iapws95.z, iapws95_label)
-    add_pure_bulk_benchmarks!(Suite, "IAPWS95", m_iapws95, iapws95.p, iapws95.z, iapws95_label)
+    if !isnothing(m_iapws95)
+        add_pure_saturation_benchmarks!(Suite, "IAPWS95", m_iapws95, iapws95.p, iapws95_label)
+        add_pure_ph_benchmarks!(Suite, "IAPWS95", m_iapws95, iapws95.p, iapws95.z, iapws95_label)
+        add_pure_bulk_benchmarks!(Suite, "IAPWS95", m_iapws95, iapws95.p, iapws95.z, iapws95_label)
+    end
 
     epcsaft = BenchmarkSystems.epcsaft
     epcsaft_label = join([epcsaft.solvents; epcsaft.ions], "/")
-    m_epcsaft = ePCSAFT(epcsaft.solvents, epcsaft.ions)
+    m_epcsaft = guard_benchmark(benchmark_path("models", "ePCSAFT", epcsaft_label)) do
+        ePCSAFT(epcsaft.solvents, epcsaft.ions)
+    end
 
-    add_electrolyte_benchmarks!(Suite, "ePCSAFT", m_epcsaft, epcsaft.p, epcsaft.T, epcsaft.z, epcsaft.m, epcsaft_label)
+    !isnothing(m_epcsaft) && add_electrolyte_benchmarks!(Suite, "ePCSAFT", m_epcsaft, epcsaft.p, epcsaft.T, epcsaft.z, epcsaft.m, epcsaft_label)
     nothing
 end

@@ -33,7 +33,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BENCHLEDGER_VERSION: "0.4.1"
+  BENCHLEDGER_VERSION: "0.5.0"
   BENCH_PACKAGE_NAME: "Clapeyron.jl"
   BENCH_PACKAGE_DESCRIPTION: "Benchmark history for Clapeyron.jl"
   BENCH_PACKAGE_URL: "https://github.com/ClapeyronThermo/Clapeyron.jl"
@@ -111,7 +111,7 @@ jobs:
       - name: Set up Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: "1"
+          version: "lts"
 
       - name: Cache Julia packages
         uses: julia-actions/cache@v2
@@ -120,11 +120,13 @@ jobs:
         env:
           BENCH_DB_IN_CURRENT_BRANCH: false
           BENCH_DB_PATH: ${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite
-          BENCH_BRANCH: ${{ steps.target.outputs.branch }}
-          BENCH_TAG: ${{ steps.target.outputs.tag }}
-          BENCH_COMMIT: ${{ steps.target.outputs.commit }}
+          BENCH_SOURCE_BRANCH: ${{ steps.target.outputs.branch }}
+          BENCH_SOURCE_TAGS: ${{ steps.target.outputs.tag }}
+          BENCH_SOURCE_REVISION: ${{ steps.target.outputs.commit }}
           BENCH_DATE: ${{ steps.target.outputs.date }}
           BENCH_NOTES: "GitHub Actions BenchLedger run"
+          BENCH_RUN_METADATA: >-
+            {"ci":{"provider":"GitHub Actions","workflow":${{ toJson(github.workflow) }},"job":${{ toJson(github.job) }},"run_id":${{ toJson(github.run_id) }},"run_attempt":${{ github.run_attempt }},"event":${{ toJson(github.event_name) }},"runner_name":${{ toJson(runner.name) }},"run_url":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}}
         run: |
           export BENCH_TARGET_PATH="${{ github.workspace }}/target/Clapeyron.jl"
           test -d "$BENCH_TARGET_PATH"
@@ -178,7 +180,7 @@ jobs:
                 "sha256": "${sha256}",
                 "size_bytes": ${size_bytes},
                 "packed_at": "${generated_at}",
-                "schema_version": 3,
+                "schema_version": 4,
                 "metadata_preview": {
                   "name": "${BENCH_PACKAGE_NAME}",
                   "project_url": "${BENCH_PACKAGE_URL}",
@@ -242,7 +244,7 @@ jobs:
       - name: Set up Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: "1"
+          version: "lts"
 
       - name: Cache Julia packages
         uses: julia-actions/cache@v2
@@ -281,9 +283,8 @@ jobs:
             if BENCH_TARGET_PATH="$TARGET_DIR" \
               BENCH_DB_PATH="$DB" \
               BENCH_DB_IN_CURRENT_BRANCH=false \
-              BENCH_BRANCH="" \
-              BENCH_TAG="$tag" \
-              BENCH_COMMIT="$commit" \
+              BENCH_SOURCE_TAGS="$tag" \
+              BENCH_SOURCE_REVISION="$commit" \
               BENCH_DATE="$date" \
               BENCH_NOTES="Backfilled with current benchmark suite against $tag" \
               julia --project=benchmark benchmark/runbench.jl; then
@@ -397,7 +398,7 @@ jobs:
                 "sha256": "${sha256}",
                 "size_bytes": ${size_bytes},
                 "packed_at": "${generated_at}",
-                "schema_version": 3,
+                "schema_version": 4,
                 "metadata_preview": {
                   "name": "${BENCH_PACKAGE_NAME}",
                   "project_url": "${BENCH_PACKAGE_URL}",
