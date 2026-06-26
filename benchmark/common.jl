@@ -55,7 +55,7 @@ function log_benchmark_skip(path::Vector{String}, err)
     println(stderr, "Skipping benchmark ", join(path, " / "), ": ", sprint(showerror, err))
 end
 
-function guard_benchmark(path::Vector{String}, f::Function)
+function guard_benchmark(f::Function, path::Vector{String})
     if !Bench_Best_Effort
         return f()
     end
@@ -68,7 +68,7 @@ function guard_benchmark(path::Vector{String}, f::Function)
     end
 end
 
-function push_first_call!(rows::Vector{NamedTuple}, path::Vector{String}, f::Function)
+function push_first_call!(f::Function, rows::Vector{NamedTuple}, path::Vector{String})
     guard_benchmark(path) do
         elapsed = @elapsed value = f()
         push!(rows, first_metric_row(path, elapsed, "s"))
@@ -86,8 +86,8 @@ function register_benchmark!(group::BenchmarkGroup, model_name::AbstractString, 
     nothing
 end
 
-function push_model!(models, name::AbstractString, path::Vector{String}, f::Function)
-    model = guard_benchmark(path, f)
+function push_model!(f::Function, models, name::AbstractString, path::Vector{String})
+    model = guard_benchmark(f, path)
     !isnothing(model) && push!(models, (String(name), model))
     model
 end
