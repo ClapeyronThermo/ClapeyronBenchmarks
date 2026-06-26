@@ -206,9 +206,93 @@ jobs:
             git push origin HEAD:gh-pages
           fi
 
-  backfill-benchmarks:
+  backfill-tag-list:
     if: github.event_name == 'workflow_dispatch' && inputs.backfill == 'true'
     runs-on: ubuntu-24.04
+    outputs:
+      tags: ${{ steps.tags.outputs.tags }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check out Clapeyron target history
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.TARGET_REPOSITORY }}
+          ref: master
+          path: target/Clapeyron.jl
+          fetch-depth: 0
+
+      - name: Build backfill tag list
+        id: tags
+        run: |
+          set -euo pipefail
+
+          TARGET_DIR="${{ github.workspace }}/target/Clapeyron.jl"
+          BACKFILL_FROM_TAG="${{ inputs.backfill_from_tag || env.BACKFILL_FROM_TAG }}"
+          BACKFILL_TO_TAG="${{ inputs.backfill_to_tag || env.BACKFILL_TO_TAG }}"
+          selected_tags=()
+          started=false
+          found_from=false
+          found_to=false
+
+          if [ -z "$BACKFILL_FROM_TAG" ]; then
+            started=true
+            found_from=true
+          fi
+
+          if [ -z "$BACKFILL_TO_TAG" ]; then
+            found_to=true
+          fi
+
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+
+            if [ "$started" = false ]; then
+              if [ "$tag" != "$BACKFILL_FROM_TAG" ]; then
+                continue
+              fi
+              started=true
+              found_from=true
+            fi
+
+            selected_tags+=("$tag")
+
+            if [ -n "$BACKFILL_TO_TAG" ] && [ "$tag" = "$BACKFILL_TO_TAG" ]; then
+              found_to=true
+              break
+            fi
+          done < <(git -C "$TARGET_DIR" tag --sort=v:refname)
+
+          if [ "$found_from" = false ]; then
+            echo "Requested backfill_from_tag not found: $BACKFILL_FROM_TAG" >&2
+            exit 1
+          fi
+
+          if [ "$found_to" = false ]; then
+            echo "Requested backfill_to_tag not found: $BACKFILL_TO_TAG" >&2
+            exit 1
+          fi
+
+          tags_json="$(
+            printf '%s\n' "${selected_tags[@]}" \
+              | python3 -c 'import json, sys; print(json.dumps([line.strip() for line in sys.stdin if line.strip()]))'
+          )"
+
+          echo "tags=$tags_json" >> "$GITHUB_OUTPUT"
+
+  backfill-benchmarks:
+    needs: backfill-tag-list
+    if: needs.backfill-tag-list.outputs.tags != '[]'
+    runs-on: ubuntu-24.04
+    name: Backfill ${{ matrix.tag }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        tag: ${{ fromJSON(needs.backfill-tag-list.outputs.tags) }}
     permissions:
       contents: write
     steps:
@@ -249,104 +333,31 @@ jobs:
       - name: Cache Julia packages
         uses: julia-actions/cache@v2
 
-      - name: Backfill historical benchmark database
+      - name: Backfill one historical tag
         run: |
           set -euo pipefail
 
           TARGET_DIR="${{ github.workspace }}/target/Clapeyron.jl"
           DB="${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite"
-          FAILURE_LOG="${{ github.workspace }}/gh-pages/benchmarks/data/backfill-failures.txt"
-          BACKFILL_FROM_TAG="${{ inputs.backfill_from_tag || env.BACKFILL_FROM_TAG }}"
-          BACKFILL_TO_TAG="${{ inputs.backfill_to_tag || env.BACKFILL_TO_TAG }}"
-          started=false
-          success_count=0
-          failure_count=0
+          TAG="${{ matrix.tag }}"
 
           mkdir -p "$(dirname "$DB")"
 
-          for tag in $(git -C "$TARGET_DIR" tag --sort=v:refname); do
-            if [ "$started" = false ]; then
-              if [ "$tag" = "$BACKFILL_FROM_TAG" ]; then
-                started=true
-              else
-                continue
-              fi
-            fi
+          echo "Backfilling benchmark for $TAG"
 
-            echo "Backfilling benchmark for $tag"
+          git -C "$TARGET_DIR" checkout --detach "$TAG"
 
-            git -C "$TARGET_DIR" checkout --detach "$tag"
+          commit="$(git -C "$TARGET_DIR" rev-parse HEAD)"
+          date="$(git -C "$TARGET_DIR" show -s --format=%cI HEAD)"
 
-            commit="$(git -C "$TARGET_DIR" rev-parse HEAD)"
-            date="$(git -C "$TARGET_DIR" show -s --format=%cI HEAD)"
-
-            if BENCH_TARGET_PATH="$TARGET_DIR" \
-              BENCH_DB_PATH="$DB" \
-              BENCH_DB_IN_CURRENT_BRANCH=false \
-              BENCH_SOURCE_TAGS="$tag" \
-              BENCH_SOURCE_REVISION="$commit" \
-              BENCH_DATE="$date" \
-              BENCH_NOTES="Backfilled with current benchmark suite against $tag" \
-              julia --project=benchmark benchmark/runbench.jl; then
-              success_count=$((success_count + 1))
-              echo "Benchmark succeeded for $tag"
-            else
-              failure_count=$((failure_count + 1))
-              echo "Benchmark failed for $tag, skipping to next tag."
-              printf '%s\t%s\t%s\n' "$tag" "$commit" "$date" >> "$FAILURE_LOG"
-            fi
-
-            if [ -n "$BACKFILL_TO_TAG" ] && [ "$tag" = "$BACKFILL_TO_TAG" ]; then
-              break
-            fi
-          done
-
-          if [ "$started" = false ]; then
-            echo "Requested backfill_from_tag '$BACKFILL_FROM_TAG' was not found in $TARGET_REPOSITORY tags." >&2
-            exit 1
-          fi
-
-          if [ "$failure_count" -gt 0 ]; then
-            {
-              echo "## Backfill skipped failed tags"
-              echo
-              echo "Successful tags: $success_count"
-              echo "Failed tags: $failure_count"
-              echo
-              echo '```'
-              cat "$FAILURE_LOG"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          if [ "$success_count" -eq 0 ]; then
-            echo "Backfill did not produce any successful benchmark runs." >&2
-            exit 1
-          fi
-
-      - name: Checkpoint partial benchmark database
-        if: always()
-        env:
-          BENCH_DB_PATH: ${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite
-        run: |
-          if [ -f "$BENCH_DB_PATH" ]; then
-            julia --project=benchmark -e 'using SQLite; db = SQLite.DB(ENV["BENCH_DB_PATH"]); SQLite.execute(db, "PRAGMA wal_checkpoint(TRUNCATE)"); close(db)'
-            rm -f "${BENCH_DB_PATH}-wal" "${BENCH_DB_PATH}-shm"
-          fi
-
-      - name: Upload partial benchmark database
-        if: always() && hashFiles('gh-pages/benchmarks/data/benchledger.sqlite') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: clapeyron-backfill-db-${{ github.run_id }}
-          path: gh-pages/benchmarks/data/benchledger.sqlite
-
-      - name: Upload skipped-tag log
-        if: always() && hashFiles('gh-pages/benchmarks/data/backfill-failures.txt') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: clapeyron-backfill-failures-${{ github.run_id }}
-          path: gh-pages/benchmarks/data/backfill-failures.txt
+          BENCH_TARGET_PATH="$TARGET_DIR" \
+          BENCH_DB_PATH="$DB" \
+          BENCH_DB_IN_CURRENT_BRANCH=false \
+          BENCH_SOURCE_TAGS="$TAG" \
+          BENCH_SOURCE_REVISION="$commit" \
+          BENCH_DATE="$date" \
+          BENCH_NOTES="Backfilled with current benchmark suite against $TAG" \
+          julia --project=benchmark benchmark/runbench.jl
 
       - name: Checkpoint benchmark database
         if: hashFiles('gh-pages/benchmarks/data/benchledger.sqlite') != ''
@@ -380,7 +391,7 @@ jobs:
           sha256="$(sha256sum "$db" | cut -d' ' -f1)"
           size_bytes="$(stat -c '%s' "$db")"
 
-          cat > gh-pages/benchmarks/benchledger.json <<EOF
+          cat > gh-pages/benchmarks/benchledger.json <<EOF2
           {
             "manifest_version": 1,
             "benchledger_web_version": "${BENCHLEDGER_VERSION}",
@@ -407,7 +418,7 @@ jobs:
               }
             ]
           }
-          EOF
+          EOF2
 
       - name: Publish BenchLedger page
         if: hashFiles('gh-pages/benchmarks/data/benchledger.sqlite') != ''
@@ -421,6 +432,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No benchmarks page changes to publish."
           else
-            git commit -m "Backfill BenchLedger benchmark page"
+            git commit -m "Backfill BenchLedger benchmark page for ${{ matrix.tag }}"
             git push origin HEAD:gh-pages
           fi
