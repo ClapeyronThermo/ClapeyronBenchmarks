@@ -27,6 +27,13 @@ function schema_version(path::AbstractString)
     end
 end
 
+function ensure_compatible_target!(path::AbstractString)
+    isfile(path) || return false
+    version = schema_version(path)
+    version == Schema_Version || error("Unsupported target schema version in $(path): $(version). Expected $(Schema_Version).")
+    true
+end
+
 function merge_shard!(db::SQLite.DB, path::AbstractString, alias::AbstractString)
     escaped_path = replace(path, "'" => "''")
     SQLite.execute(db, "ATTACH DATABASE '$(escaped_path)' AS $(alias)")
@@ -56,14 +63,18 @@ for path in paths
 end
 
 mkpath(dirname(target_path))
-cp(first(paths), target_path; force=true)
+target_exists = ensure_compatible_target!(target_path)
+if !target_exists
+    cp(first(paths), target_path; force=true)
+end
 
 db = SQLite.DB(target_path)
 try
     SQLite.execute(db, "PRAGMA foreign_keys=ON")
     SQLite.execute(db, "PRAGMA journal_mode=WAL")
     SQLite.execute(db, "PRAGMA synchronous=NORMAL")
-    for (index, path) in enumerate(paths[2:end])
+    merge_paths = target_exists ? paths : paths[2:end]
+    for (index, path) in enumerate(merge_paths)
         merge_shard!(db, path, "shard$(index)")
     end
     DBInterface.execute(db, """

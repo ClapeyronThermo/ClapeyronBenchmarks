@@ -46,8 +46,6 @@ env:
   BENCH_PACKAGE_DESCRIPTION: "Benchmark history for Clapeyron.jl"
   BENCH_PACKAGE_URL: "https://github.com/ClapeyronThermo/Clapeyron.jl"
   TARGET_REPOSITORY: "ClapeyronThermo/Clapeyron.jl"
-  BACKFILL_FROM_TAG: "v0.6.1"
-  BACKFILL_TO_TAG: "v0.6.25"
 
 jobs:
   build-and-publish:
