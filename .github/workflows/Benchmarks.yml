@@ -12,7 +12,7 @@ on:
         required: true
         default: "false"
       backfill_mode:
-        description: "Backfill mode: serial keeps one runner, parallel shards by tag"
+        description: "Backfill mode: serial/parallel"
         required: false
         default: "serial"
       backfill_parallelism:
@@ -27,6 +27,10 @@ on:
         description: "Newest Clapeyron tag to include in backfill"
         required: false
         default: "v0.6.25"
+      allow_failures:
+        description: "Allow failures: true/false/auto"
+        required: false
+        default: "auto"
   push:
     branches:
       - master
@@ -41,7 +45,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BENCHLEDGER_VERSION: "0.5.1"
+  BENCHLEDGER_VERSION: "0.5.2"
   BENCH_PACKAGE_NAME: "Clapeyron.jl"
   BENCH_PACKAGE_DESCRIPTION: "Benchmark history for Clapeyron.jl"
   BENCH_PACKAGE_URL: "https://github.com/ClapeyronThermo/Clapeyron.jl"
@@ -126,6 +130,7 @@ jobs:
         env:
           BENCH_DB_IN_CURRENT_BRANCH: false
           BENCH_DB_PATH: ${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite
+          BENCH_ALLOW_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_failures == 'true' && 'true' || github.event_name == 'workflow_dispatch' && inputs.allow_failures == 'false' && 'false' || 'false' }}
           BENCH_SOURCE_BRANCH: ${{ steps.target.outputs.branch }}
           BENCH_SOURCE_TAGS: ${{ steps.target.outputs.tag }}
           BENCH_SOURCE_REVISION: ${{ steps.target.outputs.commit }}
@@ -340,6 +345,7 @@ jobs:
           TARGET_DIR="${{ github.workspace }}/target/Clapeyron.jl"
           DB="${{ github.workspace }}/gh-pages/benchmarks/data/benchledger.sqlite"
           FAILURE_LOG="${{ github.workspace }}/gh-pages/benchmarks/data/backfill-failures.txt"
+          ALLOW_FAILURES="${{ inputs.allow_failures == 'true' && 'true' || inputs.allow_failures == 'false' && 'false' || 'true' }}"
           success_count=0
           failure_count=0
 
@@ -359,7 +365,7 @@ jobs:
             if BENCH_TARGET_PATH="$TARGET_DIR" \
               BENCH_DB_PATH="$DB" \
               BENCH_DB_IN_CURRENT_BRANCH=false \
-              BENCH_BEST_EFFORT=true \
+              BENCH_ALLOW_FAILURES="$ALLOW_FAILURES" \
               BENCH_SOURCE_TAGS="$tag" \
               BENCH_SOURCE_REVISION="$commit" \
               BENCH_DATE="$date" \
@@ -509,6 +515,7 @@ jobs:
           TAG="${{ matrix.tag }}"
           DB_DIR="${{ github.workspace }}/backfill-shards"
           DB="$DB_DIR/${TAG}.sqlite"
+          ALLOW_FAILURES="${{ inputs.allow_failures == 'true' && 'true' || inputs.allow_failures == 'false' && 'false' || 'true' }}"
 
           mkdir -p "$DB_DIR"
           echo "Backfilling benchmark for $TAG"
@@ -521,7 +528,7 @@ jobs:
           BENCH_TARGET_PATH="$TARGET_DIR" \
           BENCH_DB_PATH="$DB" \
           BENCH_DB_IN_CURRENT_BRANCH=false \
-          BENCH_BEST_EFFORT=true \
+          BENCH_ALLOW_FAILURES="$ALLOW_FAILURES" \
           BENCH_SOURCE_TAGS="$TAG" \
           BENCH_SOURCE_REVISION="$commit" \
           BENCH_DATE="$date" \

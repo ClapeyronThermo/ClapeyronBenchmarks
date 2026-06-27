@@ -47,7 +47,7 @@ const BenchmarkSystems = (
     ),
 )
 
-const Bench_Best_Effort = lowercase(get(ENV, "BENCH_BEST_EFFORT", "false")) in ("true", "1", "yes")
+const Bench_Allow_Failures = lowercase(get(ENV, "BENCH_ALLOW_FAILURES", "false")) in ("true", "1", "yes")
 
 benchmark_path(parts...) = String[string(part) for part in parts]
 
@@ -56,7 +56,7 @@ function log_benchmark_skip(path::Vector{String}, err)
 end
 
 function guard_benchmark(f::Function, path::Vector{String})
-    if !Bench_Best_Effort
+    if !Bench_Allow_Failures
         return f()
     end
 
@@ -79,7 +79,7 @@ end
 function register_benchmark!(group::BenchmarkGroup, model_name::AbstractString, fluid_label::AbstractString,
     path::Vector{String}, probe::Function, build::Function)
     guard_benchmark(path) do
-        Bench_Best_Effort && probe()
+        Bench_Allow_Failures && probe()
         group[String(model_name)] = BenchmarkGroup()
         group[String(model_name)][fluid_label] = build()
     end
