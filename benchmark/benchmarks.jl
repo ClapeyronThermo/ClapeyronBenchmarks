@@ -15,9 +15,9 @@ first_results = guard_benchmark(benchmark_path("first_call")) do
 end
 isnothing(first_results) && (first_results = NamedTuple[])
 
-guard_benchmark(benchmark_path("steady_state")) do
-    add_all_benchmarks!(Suite)
-end
+# guard_benchmark(benchmark_path("steady_state")) do
+#     add_all_benchmarks!(Suite)
+# end
 
 tune!(Suite; seconds=2.0)
 suite_results = run(Suite)
