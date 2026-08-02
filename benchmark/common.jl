@@ -94,7 +94,7 @@ end
 
 function first_metric_row(path::Vector{String}, value::Real, unit::String)
     return (
-        benchmark_path=path,
+        benchmark_key=path,
         metric_name="time",
         statistic="first",
         unit=unit,
