@@ -1,7 +1,7 @@
 name: Benchmarks
 
 env:
-  BENCHLEDGER_VERSION: "0.6.1"
+  BENCHLEDGER_VERSION: "0.7.0"
   TARGET_REPOSITORY: "ClapeyronThermo/Clapeyron.jl"
   TARGET_REF: ""
   BENCH_DB_BRANCH: "gh-pages"
@@ -14,7 +14,7 @@ on:
       target_mode:
         description: "Target selection mode"
         required: true
-        default: ref
+        default: current
         type: choice
         options: [current, ref, tags]
       target_repository:
@@ -42,10 +42,6 @@ on:
         required: false
         default: ""
         type: string
-      allow_failures:
-        description: "Allow failures: true/false/auto"
-        required: false
-        default: "auto"
   push:
     branches: [master]
     tags: ["v*"]
@@ -154,6 +150,37 @@ jobs:
       - name: Instantiate benchmark project
         run: julia --project=benchmark -e 'using Pkg; Pkg.instantiate()'
 
+      - name: Install matching BenchLedger probe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          tag="v${BENCHLEDGER_VERSION}"
+          asset="BenchLedger-probe-${tag}-linux-amd64.tar.gz"
+          install_dir="$RUNNER_TEMP/benchledger-probe"
+          rm -rf "$install_dir"
+          mkdir -p "$install_dir/download" "$install_dir/runtime"
+
+          gh release download "$tag" \
+            --repo abcdvvvv/BenchLedger \
+            --pattern "$asset" \
+            --pattern "$asset.sha256" \
+            --dir "$install_dir/download"
+
+          (
+            cd "$install_dir/download"
+            sha256sum -c "$asset.sha256"
+          )
+
+          tar -xzf "$install_dir/download/$asset" -C "$install_dir/runtime"
+          probe_path="$(find "$install_dir/runtime" -type f -name benchledger-probe -perm -111 -print -quit)"
+          [ -n "$probe_path" ] || { echo "benchledger-probe was not found in $asset" >&2; exit 1; }
+
+          echo "BENCH_PROBE_PATH=$probe_path" >> "$GITHUB_ENV"
+          "$probe_path" --version
+          "$probe_path" --pretty > "$RUNNER_TEMP/benchledger-probe-smoke.json"
+
       - name: Run benchmarks
         env:
           TARGET_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.target_mode || env.TARGET_REPOSITORY != '' && 'ref' || 'current' }}
@@ -161,7 +188,6 @@ jobs:
           TAG_PATTERN: ${{ inputs.tag_pattern || '*' }}
           TAG_START: ${{ inputs.tag_start || '' }}
           TAG_END: ${{ inputs.tag_end || '' }}
-          BENCH_ALLOW_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_failures == 'true' && 'true' || github.event_name == 'workflow_dispatch' && inputs.allow_failures == 'false' && 'false' || github.event_name == 'workflow_dispatch' && inputs.target_mode == 'tags' && 'true' || 'false' }}
           BENCH_RUN: >-
             {"notes":"GitHub Actions BenchLedger run","metadata":{"ci":{"provider":"GitHub Actions","workflow":${{ toJson(github.workflow) }},"job":${{ toJson(github.job) }},"run_id":${{ toJson(github.run_id) }},"run_attempt":${{ github.run_attempt }},"event":${{ toJson(github.event_name) }},"runner_name":${{ toJson(runner.name) }},"run_url":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}","target_mode":${{ toJson(github.event_name == 'workflow_dispatch' && inputs.target_mode || env.TARGET_REPOSITORY != '' && 'ref' || 'current') }},"target_ref":${{ toJson(github.event_name != 'workflow_dispatch' && env.TARGET_REF || inputs.target_ref) }}},"source":{"repository":${{ toJson(github.event_name == 'workflow_dispatch' && inputs.target_repository != '' && inputs.target_repository || github.event_name != 'workflow_dispatch' && env.TARGET_REPOSITORY != '' && env.TARGET_REPOSITORY || github.repository) }},"branch":${{ toJson(steps.target_provenance.outputs.branch) }}}}}
         run: |
@@ -260,28 +286,35 @@ jobs:
             exit 1
           fi
 
-      - name: Checkpoint benchmark database
+      - name: Prepare BenchLedger database and viewer
         run: |
+          set -euo pipefail
           DB="$GITHUB_WORKSPACE/.benchledger-db/$BENCH_DB_FILE"
           julia --project=benchmark -e 'using SQLite; db = SQLite.DB(ARGS[1]); SQLite.execute(db, "PRAGMA wal_checkpoint(TRUNCATE)"); close(db)' "$DB"
           rm -f "${DB}-wal" "${DB}-shm"
 
-      - name: Install BenchLedger viewer
-        if: env.BENCH_DB_BRANCH == 'gh-pages'
-        run: |
-          url="https://github.com/abcdvvvv/BenchLedger/releases/download/v${BENCHLEDGER_VERSION}/BenchLedger-${BENCHLEDGER_VERSION}-dist.tar.gz"
-          curl -fsSL "$url" -o /tmp/benchledger-dist.tar.gz
-          rm -rf /tmp/benchledger-dist && mkdir -p /tmp/benchledger-dist
-          tar -xzf /tmp/benchledger-dist.tar.gz -C /tmp/benchledger-dist
+          if [ "$BENCH_DB_BRANCH" != "gh-pages" ]; then
+            exit 0
+          fi
+
+          tag="v${BENCHLEDGER_VERSION}"
+          asset="BenchLedger-${BENCHLEDGER_VERSION}-dist.tar.gz"
+          base_url="https://github.com/abcdvvvv/BenchLedger/releases/download/${tag}"
+          rm -rf /tmp/benchledger-dist /tmp/benchledger-dist-download
+          mkdir -p /tmp/benchledger-dist /tmp/benchledger-dist-download
+          curl -fsSL "${base_url}/${asset}" -o "/tmp/benchledger-dist-download/${asset}"
+          curl -fsSL "${base_url}/${asset}.sha256" -o "/tmp/benchledger-dist-download/${asset}.sha256"
+          (
+            cd /tmp/benchledger-dist-download
+            sha256sum -c "${asset}.sha256"
+          )
+          tar -xzf "/tmp/benchledger-dist-download/${asset}" -C /tmp/benchledger-dist
           mkdir -p .benchledger-db/benchmarks/data
           find .benchledger-db/benchmarks -mindepth 1 -maxdepth 1 ! -name data -exec rm -rf {} +
           cp -a /tmp/benchledger-dist/. .benchledger-db/benchmarks/
           touch .benchledger-db/.nojekyll
 
-      - name: Generate BenchLedger manifest
-        if: env.BENCH_DB_BRANCH == 'gh-pages'
-        run: |
-          python3 - "$GITHUB_WORKSPACE/.benchledger-db/$BENCH_DB_FILE" ".benchledger-db/benchmarks/benchledger.json" "$BENCHLEDGER_VERSION" <<'PY'
+          python3 - "$DB" ".benchledger-db/benchmarks/benchledger.json" "$BENCHLEDGER_VERSION" <<'PY'
           import hashlib
           import json
           import os
@@ -297,7 +330,6 @@ jobs:
           description = metadata.get("description", "")
           project_url = metadata.get("project_url") or None
           logo_url = metadata.get("logo_url") or None
-          schema_version = int(metadata["schema_version"])
           generated_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
           with open(db_path, "rb") as source:
@@ -309,7 +341,6 @@ jobs:
               db_url = "./" + db_url
 
           manifest = {
-              "manifest_version": 1,
               "benchledger_web_version": web_version,
               "generated_at": generated_at,
               "site": {"title": f"{name} BenchLedger", "description": description},
@@ -321,7 +352,6 @@ jobs:
                   "sha256": sha256,
                   "size_bytes": os.path.getsize(db_path),
                   "packed_at": generated_at,
-                  "schema_version": schema_version,
                   "metadata_preview": {
                       "name": name,
                       "project_url": project_url,

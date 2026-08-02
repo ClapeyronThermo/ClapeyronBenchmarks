@@ -1,0 +1,12 @@
+name: Benchmarks Scheduled
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    uses: ./.github/workflows/Benchmarks.yml
