@@ -121,7 +121,6 @@ jobs:
             requested_ref="$(git -C "$TARGET_DIR" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/ {sub("refs/heads/", "", $2); print $2; exit}' || true)"
           fi
 
-          tag="$(git -C "$TARGET_DIR" tag --points-at HEAD | head -n 1 || true)"
           branch=""
 
           # actions/checkout commonly leaves detached HEAD, so prefer the requested ref when it is a branch.
@@ -131,10 +130,6 @@ jobs:
             branch="$requested_ref"
           else
             branch="$(git -C "$TARGET_DIR" branch --show-current || true)"
-          fi
-
-          if [ -n "$tag" ]; then
-            branch=""
           fi
 
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
