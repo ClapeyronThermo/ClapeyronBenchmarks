@@ -1,7 +1,7 @@
 name: Benchmarks
 
 env:
-  BENCHLEDGER_VERSION: "0.7.0"
+  BENCHLEDGER_VERSION: "0.8.0"
   TARGET_REPOSITORY: "ClapeyronThermo/Clapeyron.jl"
   TARGET_REF: ""
   BENCH_DB_BRANCH: "gh-pages"
@@ -121,6 +121,7 @@ jobs:
             requested_ref="$(git -C "$TARGET_DIR" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/ {sub("refs/heads/", "", $2); print $2; exit}' || true)"
           fi
 
+          tag="$(git -C "$TARGET_DIR" tag --points-at HEAD | head -n 1 || true)"
           branch=""
 
           # actions/checkout commonly leaves detached HEAD, so prefer the requested ref when it is a branch.
@@ -132,6 +133,10 @@ jobs:
             branch="$(git -C "$TARGET_DIR" branch --show-current || true)"
           fi
 
+          if [ -n "$tag" ]; then
+            branch=""
+          fi
+
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
       - name: Set up Julia
@@ -141,9 +146,6 @@ jobs:
 
       - name: Cache Julia packages
         uses: julia-actions/cache@v2
-
-      - name: Instantiate benchmark project
-        run: julia --project=benchmark -e 'using Pkg; Pkg.instantiate()'
 
       - name: Install matching BenchLedger probe
         env:
