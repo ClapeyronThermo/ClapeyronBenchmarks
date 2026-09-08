@@ -121,7 +121,6 @@ jobs:
             requested_ref="$(git -C "$TARGET_DIR" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/ {sub("refs/heads/", "", $2); print $2; exit}' || true)"
           fi
 
-          tag="$(git -C "$TARGET_DIR" tag --points-at HEAD | head -n 1 || true)"
           branch=""
 
           # actions/checkout commonly leaves detached HEAD, so prefer the requested ref when it is a branch.
@@ -131,10 +130,6 @@ jobs:
             branch="$requested_ref"
           else
             branch="$(git -C "$TARGET_DIR" branch --show-current || true)"
-          fi
-
-          if [ -n "$tag" ]; then
-            branch=""
           fi
 
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
@@ -185,10 +180,16 @@ jobs:
           TAG_PATTERN: ${{ inputs.tag_pattern || '*' }}
           TAG_START: ${{ inputs.tag_start || '' }}
           TAG_END: ${{ inputs.tag_end || '' }}
+          BENCH_SOURCE_BRANCH: ${{ steps.target_provenance.outputs.branch }}
           BENCH_RUN: >-
-            {"notes":"GitHub Actions BenchLedger run","metadata":{"ci":{"provider":"GitHub Actions","workflow":${{ toJson(github.workflow) }},"job":${{ toJson(github.job) }},"run_id":${{ toJson(github.run_id) }},"run_attempt":${{ github.run_attempt }},"event":${{ toJson(github.event_name) }},"runner_name":${{ toJson(runner.name) }},"run_url":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}","target_mode":${{ toJson(github.event_name == 'workflow_dispatch' && inputs.target_mode || env.TARGET_REPOSITORY != '' && 'ref' || 'current') }},"target_ref":${{ toJson(github.event_name != 'workflow_dispatch' && env.TARGET_REF || inputs.target_ref) }}},"source":{"repository":${{ toJson(github.event_name == 'workflow_dispatch' && inputs.target_repository != '' && inputs.target_repository || github.event_name != 'workflow_dispatch' && env.TARGET_REPOSITORY != '' && env.TARGET_REPOSITORY || github.repository) }},"branch":${{ toJson(steps.target_provenance.outputs.branch) }}}}}
+            {"notes":"GitHub Actions BenchLedger run","metadata":{"ci":{"provider":"GitHub Actions","workflow":${{ toJson(github.workflow) }},"job":${{ toJson(github.job) }},"run_id":${{ toJson(github.run_id) }},"run_attempt":${{ github.run_attempt }},"event":${{ toJson(github.event_name) }},"runner_name":${{ toJson(runner.name) }},"run_url":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}","target_mode":${{ toJson(github.event_name == 'workflow_dispatch' && inputs.target_mode || env.TARGET_REPOSITORY != '' && 'ref' || 'current') }},"target_ref":${{ toJson(github.event_name != 'workflow_dispatch' && env.TARGET_REF || inputs.target_ref) }}},"source":{"repository":${{ toJson(github.event_name == 'workflow_dispatch' && inputs.target_repository != '' && inputs.target_repository || github.event_name != 'workflow_dispatch' && env.TARGET_REPOSITORY != '' && env.TARGET_REPOSITORY || github.repository) }}}}}
         run: |
           set -euo pipefail
+
+          if [ -n "$BENCH_SOURCE_BRANCH" ]; then
+            BENCH_RUN="$(jq -c --arg branch "$BENCH_SOURCE_BRANCH" '.metadata.source.branch = $branch' <<<"$BENCH_RUN")"
+          fi
+          export BENCH_RUN
 
           DB="$GITHUB_WORKSPACE/.benchledger-db/$BENCH_DB_FILE"
           TARGET="$GITHUB_WORKSPACE/.bench-target"
