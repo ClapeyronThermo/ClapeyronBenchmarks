@@ -9,6 +9,7 @@ include("bulk_properties.jl")
 include("single_phase_properties.jl")
 include("electrolyte_properties.jl")
 include("multiphase_properties.jl")
+include("activity_properties.jl")
 
 first_results = guard_benchmark(benchmark_path("first_call")) do
     first_call_benchmarks()
@@ -17,6 +18,7 @@ isnothing(first_results) && (first_results = NamedTuple[])
 
 guard_benchmark(benchmark_path("steady_state")) do
     add_all_benchmarks!(Suite)
+    add_cosmosac_benchmarks!(Suite)
 end
 
 tune!(Suite; seconds=2.0)
